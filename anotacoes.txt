@@ -1,0 +1,11 @@
+anotacoes refino modelo
+objetivos:
+- simplificar modelo 
+- refinar
+- Rodar mais rápido
+- Validações automáticas 
+- Monitoramento pra ver se os numeros tao fazendo sentido
+- Escolher o modelo e garantir o erro abaixo de 10%, preferencialmente 5%
+
+estudo de 03/25 a 03/26
+ideia, ignorar fds e feriado
