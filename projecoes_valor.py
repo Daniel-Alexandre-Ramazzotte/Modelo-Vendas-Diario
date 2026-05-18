@@ -10,7 +10,7 @@ import glob
 import clickhouse_connect
 import pyodbc
 
-# Configurar a conexão com o ClickHouse
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 if wd.is_workday(datetime.today(),country='BR'):
 
@@ -147,11 +147,11 @@ while True:
         contador += 1
         continue
     elif contador <= 3 and 1 <= mape <= 5:
-        joblib.dump(model.fitted_pipeline_, f'M:\\03-Relatorios\\Projecoes\\Modelos_valor\\modelo_treinado-{data_referencia.date()}.pkl')
+        joblib.dump(model.fitted_pipeline_, os.path.join(BASE_DIR, 'modelos', 'valor', f'modelo_treinado-{data_referencia.date()}.pkl'))
         break
     elif contador > 3:
         break
-arquivos = glob.glob(r'M:\03-Relatorios\Projecoes\Modelos_valor\*.pkl')
+arquivos = glob.glob(os.path.join(BASE_DIR, 'modelos', 'valor', '*.pkl'))
 arquivos_dec = sorted(arquivos, key=lambda t: -os.stat(t).st_mtime)
 arquivo_max = arquivos_dec[0]
 modelo_treinado = joblib.load(arquivo_max)
@@ -181,14 +181,14 @@ plot_agrupado.drop(columns=['data', 'qntd', 'valor','QUANTIDADE'], inplace=True)
 plot_agrupado.reset_index(drop=True, inplace=True)
 ultima_linha = plot_agrupado.tail(1)
 y_pred_next = modelo_treinado.predict(ultima_linha)
-base = pd.read_excel(r'M:\03-Relatorios\Projecoes\backup_valor.xlsx')
+base = pd.read_excel(os.path.join(BASE_DIR, 'resultados', 'backup_valor.xlsx'))
 infos = {
         'Dia Referência': data_referencia,
         'Valor Previsto': y_pred_next[0],
         'Map': mape,
-        'Modelo Utilizado': arquivos_dec[0].split('\\')[-1].split('.pkl')[0],
+        'Modelo Utilizado': os.path.splitext(os.path.basename(arquivos_dec[0]))[0],
         'Data previsao' : hj
     }
 df_infos = pd.DataFrame([infos])
 final = pd.concat([base,df_infos])
-final.to_excel(r'M:\03-Relatorios\Projecoes\backup_valor.xlsx',index=False)
+final.to_excel(os.path.join(BASE_DIR, 'resultados', 'backup_valor.xlsx'), index=False)

@@ -8,6 +8,9 @@ from workadays import workdays as wd
 from tpot import TPOTRegressor
 from sklearn.metrics import mean_absolute_percentage_error
 import clickhouse_connect
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 if wd.is_workday(datetime.today(),country='BR'):
 
     # Configurar a conexão com o ClickHouse
@@ -99,13 +102,13 @@ if wd.is_workday(datetime.today(),country='BR'):
             contador += 1
             continue
         elif contador <=4 and 1 <= mape <= 5:
-            joblib.dump(model.fitted_pipeline_, f'M:\\03-Relatorios\\Projecoes\\Modelos_qtd\\modelo_treinado-{data_referencia.date()}.pkl')
+            joblib.dump(model.fitted_pipeline_, os.path.join(BASE_DIR, 'modelos', 'quantidade', f'modelo_treinado-{data_referencia.date()}.pkl'))
             break
         elif contador > 4:
             break
 
     # Carregar modelo mais recente
-    arquivos = glob.glob(r'M:\03-Relatorios\Projecoes\Modelos_qtd\*.pkl')
+    arquivos = glob.glob(os.path.join(BASE_DIR, 'modelos', 'quantidade', '*.pkl'))
     arquivos_dec = sorted(arquivos, key=lambda t: -os.stat(t).st_mtime)
     modelo_treinado = joblib.load(arquivos_dec[0])
 
@@ -136,14 +139,14 @@ if wd.is_workday(datetime.today(),country='BR'):
     y_pred_next = modelo_treinado.predict(plot_agrupado.tail(1))
 
     # Atualizar backup de modelos
-    base = pd.read_excel(r'M:\03-Relatorios\Projecoes\backup_qtd.xlsx')
+    base = pd.read_excel(os.path.join(BASE_DIR, 'resultados', 'backup_qtd.xlsx'))
     infos = {
         'Dia Referência': data_referencia,
         'Valor Previsto': y_pred_next[0],
         'Map': mape,
-        'Modelo Utilizado': arquivos_dec[0].split('\\')[-1].split('.pkl')[0],
+        'Modelo Utilizado': os.path.splitext(os.path.basename(arquivos_dec[0]))[0],
         'Data previsao' : hj
     }
     df_infos = pd.DataFrame([infos])
     final = pd.concat([base, df_infos])
-    final.to_excel(r'M:\03-Relatorios\Projecoes\backup_qtd.xlsx', index=False)
+    final.to_excel(os.path.join(BASE_DIR, 'resultados', 'backup_qtd.xlsx'), index=False)
