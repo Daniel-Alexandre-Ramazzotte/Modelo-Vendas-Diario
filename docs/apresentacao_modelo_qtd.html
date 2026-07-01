@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modelo de Previsão Diária — Quantidade de Propostas</title>
+<style>
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
+#deck { width: 100%; height: 100%; position: relative; }
+
+.slide {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: #fff;
+  padding: 52px 64px 44px 64px;
+  overflow: hidden;
+}
+.slide.active { display: flex; flex-direction: column; }
+
+/* --- Slide counter --- */
+.slide-num {
+  position: absolute;
+  bottom: 14px; right: 24px;
+  font-size: 13px; color: #aaa;
+}
+
+/* --- Nav --- */
+#nav {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 12px; z-index: 100;
+}
+#nav button {
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+  color: #fff; padding: 6px 18px; border-radius: 20px; cursor: pointer;
+  font-size: 14px; backdrop-filter: blur(4px);
+  transition: background 0.2s;
+}
+#nav button:hover { background: rgba(255,255,255,0.3); }
+#progress {
+  position: fixed; top: 0; left: 0; height: 3px;
+  background: #74b9ff; transition: width 0.3s; z-index: 200;
+}
+
+/* ── Custom CSS from Marp style block ── */
+
+
+/* ── Cover slide override ── */
+section.cover {
+  background: linear-gradient(135deg, #0a3d62 0%, #1e3799 100%) !important;
+  color: #ffffff !important;
+  justify-content: center !important;
+  align-items: flex-start !important;
+}
+section.cover h1 { color: #ffffff !important; border-bottom: 3px solid #74b9ff !important; font-size: 44px; }
+section.cover h2 { color: #a8d8ea !important; font-size: 26px; font-weight: 400; margin-top: 10px; }
+section.cover p   { color: #dfe6e9 !important; font-size: 18px; margin-top: 20px; }
+section.cover .slide-num { color: rgba(255,255,255,0.3) !important; }
+
+/* ── Section divider override ── */
+section.section-divider {
+  background: #1e3799 !important;
+  color: #ffffff !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center;
+}
+section.section-divider h2 { color: #ffffff !important; font-size: 36px; }
+section.section-divider h3 { color: #74b9ff !important; font-size: 26px; margin-top: 12px; }
+section.section-divider p  { color: #a8d8ea !important; font-size: 20px; margin-top: 10px; }
+section.section-divider .slide-num { color: rgba(255,255,255,0.3) !important; }
+
+/* ── General content ── */
+section h1 { font-size: 36px; color: #0a3d62; border-bottom: 2px solid #0a3d62; padding-bottom: 8px; margin-bottom: 16px; }
+section h2 { font-size: 28px; color: #1e3799; margin-bottom: 10px; }
+section h3 { font-size: 22px; color: #0a3d62; margin-bottom: 8px; }
+section p  { margin: 6px 0; line-height: 1.5; }
+section ul, section ol { margin: 6px 0 6px 22px; line-height: 1.6; }
+section li { margin: 3px 0; }
+section strong { color: #0a3d62; }
+
+section table { width: 100%; border-collapse: collapse; font-size: 17px; margin: 10px 0; }
+section th { background: #0a3d62; color: white; padding: 7px 10px; text-align: left; }
+section td { padding: 6px 10px; border-bottom: 1px solid #ddd; }
+section tr:nth-child(even) { background: #f0f4f8; }
+
+section pre  { background: #1a1a2e; color: #ecf0f1; padding: 14px; border-radius: 6px;
+               font-family: 'Consolas','Courier New',monospace; font-size: 14px;
+               line-height: 1.5; overflow-x: auto; margin: 10px 0; white-space: pre; }
+section code { font-family: 'Consolas','Courier New',monospace; }
+section p > code { background: #eaf2ff; color: #1e3799; padding: 1px 5px; border-radius: 3px; }
+
+section img { max-height: 62vh; max-width: 100%; display: block;
+              margin: 8px auto; object-fit: contain; }
+section figure { margin: 6px auto; text-align: center; }
+section figcaption { font-size: 14px; color: #666; margin-top: 4px; }
+
+.box {
+  border-left: 4px solid #1e3799;
+  background: #eaf2ff;
+  padding: 10px 16px;
+  border-radius: 4px;
+  margin: 10px 0;
+}
+.highlight { background: #27ae60; color: white; padding: 2px 7px; border-radius: 4px; font-weight: bold; }
+.warn      { background: #e74c3c; color: white; padding: 2px 7px; border-radius: 4px; font-weight: bold; }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div id="deck">
+<section class="slide" data-index="0"><h1>Modelo de Previsão Diária — Quantidade de Propostas</h1>
+<p><strong>Experimento de Seleção de Modelo</strong><br />
+Validação Walk-Forward · 294 dias · 15 candidatos</p><span class="slide-num">1 / 15</span></section>
+<section class="slide" data-index="1"><h2>Contexto e Objetivo</h2>
+<p><strong>O que fazemos hoje:</strong><br />
+O modelo atual (Pipeline TPOT de produção) prevê diariamente a quantidade de propostas a serem analisadas.</p>
+<p><strong>O problema identificado:</strong><br />
+A Pipeline Antiga apresenta instabilidade severa — em algumas datas, os erros chegam a <strong>centenas de pontos percentuais</strong>, tornando a previsão não confiável para planejamento.</p>
+<p><strong>O que fizemos:</strong><br />
+Conduzimos um experimento sistemático comparando <strong>91 configurações de modelo</strong> divididas em 4 partes, usando validação histórica sobre <strong>294 dias reais de previsão</strong>.</p>
+<blockquote>
+<p>[!important] Meta de qualidade<br />
+MAPE médio ≤ 5% (ideal) · ≤ 10% (aceitável)</p>
+</blockquote><span class="slide-num">2 / 15</span></section>
+<section class="slide" data-index="2"><h2>Como o Modelo Funciona</h2>
+<pre><code>ClickHouse (dados históricos ~541 dias)
+        ↓
+  Agregação diária de propostas (etapa 16)
+        ↓
+  Feature Engineering
+  ┌──────────────────────────────────────┐
+  │  dia_semana   lag_1  lag_2  lag_3    │
+  │  lag_0 (R$)   lag_4  lag_5  lag_6   │
+  └──────────────────────────────────────┘
+        ↓
+  Janela deslizante (45 dias úteis de treino)
+        ↓
+  Modelo → Previsão do dia seguinte
+</code></pre>
+<p><strong>Features:</strong> 8 variáveis — dia da semana + 6 lags de quantidade + 1 lag de valor monetário</p>
+<p><strong>Janela de treino:</strong> 45 dias úteis anteriores a cada previsão (replica exatamente o comportamento em produção)</p><span class="slide-num">3 / 15</span></section>
+<section class="slide" data-index="3"><h2>Metodologia de Validação</h2>
+<p><strong>Walk-Forward Cross-Validation</strong> — a forma mais rigorosa para séries temporais</p>
+<pre><code>Fold 1:  [Treino: dias 1-45]  →  [Teste: dia 46]
+Fold 2:  [Treino: dias 2-46]  →  [Teste: dia 47]
+...
+Fold N:  [Treino: dias N-45 a N-1]  →  [Teste: dia N]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parâmetro</th>
+<th>Valor</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Folds totais avaliados</td>
+<td><strong>294 dias úteis</strong> (fev/2025 → abr/2026)</td>
+</tr>
+<tr>
+<td>Janela de treino por fold</td>
+<td>45 dias úteis</td>
+</tr>
+<tr>
+<td>Inclui sábados no treino</td>
+<td>Sim</td>
+</tr>
+<tr>
+<td>Métrica principal</td>
+<td>MAPE (Erro Percentual Absoluto Médio)</td>
+</tr>
+<tr>
+<td>Fonte de dados de teste</td>
+<td><code>backup_qtd.xlsx</code> (realizados reais)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>[!note]<br />
+Cada previsão é feita <strong>sem ver dados futuros</strong> — exatamente como em produção.</p>
+</blockquote><span class="slide-num">4 / 15</span></section>
+<section class="slide" data-index="4"><h2>Experimento — Visão Geral</h2>
+<p>4 partes · 91 configurações · 294 dias</p>
+<ul>
+<li><strong>Parte 1</strong> · Modelos Simples</li>
+<li><strong>Parte 2</strong> · Ensembles e Pipelines Avançadas</li>
+<li><strong>Parte 3</strong> · Deep Learning e Séries Temporais</li>
+<li><strong>Parte 4</strong> · Pipelines TPOT (produção avaliadas retrospectivamente)</li>
+</ul><span class="slide-num">5 / 15</span></section>
+<section class="slide" data-index="5"><h2>Parte 1 — Modelos Simples</h2>
+<p>Baseline com hiperparâmetros padrão, sem tuning.</p>
+<table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th>MAPE Médio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ExtraTrees</strong></td>
+<td><strong>10,02%</strong></td>
+</tr>
+<tr>
+<td><strong>RandomForest</strong></td>
+<td><strong>10,07%</strong></td>
+</tr>
+<tr>
+<td><strong>XGBoost</strong></td>
+<td><strong>10,31%</strong></td>
+</tr>
+<tr>
+<td>GradientBoosting</td>
+<td>10,73%</td>
+</tr>
+<tr>
+<td>HuberRegressor</td>
+<td>14,51%</td>
+</tr>
+<tr>
+<td>Ridge</td>
+<td>14,74%</td>
+</tr>
+<tr>
+<td>LinearRegression</td>
+<td>14,77%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Conclusão:</strong> Modelos baseados em árvore (ExtraTrees, RandomForest, XGBoost) se destacam significativamente. Modelos lineares não capturam a não-linearidade do padrão de propostas.</p><span class="slide-num">6 / 15</span></section>
+<section class="slide" data-index="6"><h2>Parte 2 — Ensembles e Pipelines Avançadas</h2>
+<p>Seleção de variáveis, tuning de hiperparâmetros, ensembles.</p>
+<table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th>MAPE Médio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>VotingRegressor (ET + RF + XGB)</strong></td>
+<td><strong>9,74%</strong></td>
+</tr>
+<tr>
+<td>SelectKBest(k=5) + ExtraTrees</td>
+<td>10,07%</td>
+</tr>
+<tr>
+<td>SelectKBest(k=6) + RandomForest</td>
+<td>10,17%</td>
+</tr>
+<tr>
+<td>RandomForest (tuned)</td>
+<td>~10,1%</td>
+</tr>
+<tr>
+<td>SelectKBest(k=3–4) + variantes</td>
+<td>10,1–10,2%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Conclusão:</strong> O <strong>VotingRegressor</strong> (combinação de ExtraTrees + RandomForest + XGBoost) entregou o melhor resultado, reduzindo o MAPE em ~0,3 p.p. em relação ao melhor modelo simples. Ensembles superam modelos individuais.</p><span class="slide-num">7 / 15</span></section>
+<section class="slide" data-index="7"><h2>Parte 3 — Deep Learning e Séries Temporais</h2>
+<p>Modelos neurais (PyTorch) e abordagens clássicas de séries temporais.</p>
+<table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th>MAPE Médio</th>
+<th>Observação</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LSTM</td>
+<td>11,52%</td>
+<td>Rede recorrente, early stopping</td>
+</tr>
+<tr>
+<td>CNN 1D</td>
+<td>11,88%</td>
+<td>Convolucional temporal</td>
+</tr>
+<tr>
+<td>Transformer</td>
+<td>12,37%</td>
+<td>Atenção multi-head</td>
+</tr>
+<tr>
+<td>NeuralProphet</td>
+<td>16,33%</td>
+<td>Prophet com redes neurais</td>
+</tr>
+<tr>
+<td>Auto-ARIMA</td>
+<td>22,38%</td>
+<td>Modelo clássico estatístico</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Conclusão:</strong> Deep learning e ARIMA <strong>não superam</strong> os modelos de árvore para este problema. Com apenas 45 pontos de treino por fold, redes neurais não têm dados suficientes para aprender padrões complexos.</p><span class="slide-num">8 / 15</span></section>
+<section class="slide" data-index="8"><h2>Parte 4 — Pipelines TPOT (Avaliação Retrospectiva)</h2>
+<p>103 modelos <code>.pkl</code> do TPOT foram carregados e reavaliados nos mesmos 294 folds.</p>
+<table>
+<thead>
+<tr>
+<th>Modelo (top TPOT)</th>
+<th>MAPE Médio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FEAT+ABR-3</td>
+<td>9,79%</td>
+</tr>
+<tr>
+<td>SE(ETR)+MMS+BIN+SE(ELAS)+ABR</td>
+<td>9,83%</td>
+</tr>
+<tr>
+<td>FEAT+ETR</td>
+<td>9,90%</td>
+</tr>
+<tr>
+<td>SE(LINE)+SE(SGDR)+ABR</td>
+<td>9,91%</td>
+</tr>
+<tr>
+<td>FEAT+ABR-4</td>
+<td>9,93%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Conclusão:</strong> As melhores pipelines TPOT ficam na faixa de <strong>9,79–9,91%</strong>, muito próximas do VotingRegressor (9,74%). A busca genética do TPOT não entregou vantagem significativa sobre um ensemble bem construído manualmente.</p><span class="slide-num">9 / 15</span></section>
+<section class="slide" data-index="9"><h2>Top 15 — Ranking Final (Folds Realinhados · 294 dias)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Modelo</th>
+<th>Arquitetura</th>
+<th style="text-align: center;">MAPE Médio</th>
+<th style="text-align: center;">Mediana</th>
+<th style="text-align: center;">&lt; 5%</th>
+<th style="text-align: center;">&lt; 10%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>FEAT+ABR-3</strong></td>
+<td>FSS + AdaBoost (v3)</td>
+<td style="text-align: center;"><strong>9,81%</strong></td>
+<td style="text-align: center;">6,81%</td>
+<td style="text-align: center;">104/294</td>
+<td style="text-align: center;">197/294</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>FEAT+ABR-4</strong></td>
+<td>FSS + AdaBoost (v4)</td>
+<td style="text-align: center;"><strong>9,90%</strong></td>
+<td style="text-align: center;">6,47%</td>
+<td style="text-align: center;">112/294</td>
+<td style="text-align: center;">189/294</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>VotingRegressor (ET+RF+XGB)</strong></td>
+<td>Ensemble manual</td>
+<td style="text-align: center;"><strong>9,91%</strong></td>
+<td style="text-align: center;">7,28%</td>
+<td style="text-align: center;">105/294</td>
+<td style="text-align: center;">196/294</td>
+</tr>
+<tr>
+<td>4</td>
+<td>FEAT+ETR</td>
+<td>FSS + ExtraTrees</td>
+<td style="text-align: center;">9,95%</td>
+<td style="text-align: center;">7,05%</td>
+<td style="text-align: center;">114/294</td>
+<td style="text-align: center;">193/294</td>
+</tr>
+<tr>
+<td>5</td>
+<td>SE(ETR)+MMS+BIN+SE(ELAS)+ABR</td>
+<td>Stack ETR → Scale → Binarize → Stack ELAS → AdaBoost</td>
+<td style="text-align: center;">9,95%</td>
+<td style="text-align: center;">7,23%</td>
+<td style="text-align: center;">106/294</td>
+<td style="text-align: center;">183/294</td>
+</tr>
+<tr>
+<td>6</td>
+<td>RandomForest</td>
+<td>—</td>
+<td style="text-align: center;">9,99%</td>
+<td style="text-align: center;">6,94%</td>
+<td style="text-align: center;">112/294</td>
+<td style="text-align: center;">198/294</td>
+</tr>
+<tr>
+<td>7</td>
+<td>SE(LINE)+SE(SGDR)+ABR</td>
+<td>Stack LR → Stack SGD → AdaBoost</td>
+<td style="text-align: center;">10,10%</td>
+<td style="text-align: center;">6,76%</td>
+<td style="text-align: center;">106/294</td>
+<td style="text-align: center;">197/294</td>
+</tr>
+<tr>
+<td>8</td>
+<td>RandomForest (tuned)</td>
+<td>—</td>
+<td style="text-align: center;">10,11%</td>
+<td style="text-align: center;">7,14%</td>
+<td style="text-align: center;">114/294</td>
+<td style="text-align: center;">193/294</td>
+</tr>
+<tr>
+<td>9</td>
+<td>SelectKBest(k=6)+RF</td>
+<td>—</td>
+<td style="text-align: center;">10,12%</td>
+<td style="text-align: center;">6,72%</td>
+<td style="text-align: center;">109/294</td>
+<td style="text-align: center;">194/294</td>
+</tr>
+<tr>
+<td>10</td>
+<td>ExtraTrees</td>
+<td>—</td>
+<td style="text-align: center;">10,25%</td>
+<td style="text-align: center;">7,02%</td>
+<td style="text-align: center;">101/294</td>
+<td style="text-align: center;">182/294</td>
+</tr>
+<tr>
+<td>11</td>
+<td>FEAT+ABR-2</td>
+<td>FSS + AdaBoost (v2)</td>
+<td style="text-align: center;">10,30%</td>
+<td style="text-align: center;">7,46%</td>
+<td style="text-align: center;">103/294</td>
+<td style="text-align: center;">189/294</td>
+</tr>
+<tr>
+<td>12</td>
+<td>SE(ETR)+MMS+SE(XGB)+PASS+ABR</td>
+<td>Stack ETR → Scale → Stack XGB → AdaBoost</td>
+<td style="text-align: center;">10,53%</td>
+<td style="text-align: center;">8,01%</td>
+<td style="text-align: center;">94/294</td>
+<td style="text-align: center;">183/294</td>
+</tr>
+<tr>
+<td>13</td>
+<td>FEAT+ABR</td>
+<td>FSS + AdaBoost (v1)</td>
+<td style="text-align: center;">10,55%</td>
+<td style="text-align: center;">7,97%</td>
+<td style="text-align: center;">90/294</td>
+<td style="text-align: center;">187/294</td>
+</tr>
+<tr>
+<td>14</td>
+<td>SelectKBest(k=5)+ExtraTrees</td>
+<td>—</td>
+<td style="text-align: center;">10,97%</td>
+<td style="text-align: center;">7,39%</td>
+<td style="text-align: center;">99/294</td>
+<td style="text-align: center;">178/294</td>
+</tr>
+<tr>
+<td>15</td>
+<td>SE(SGDR)+SELE+ABR</td>
+<td>Stack SGD → SelectFwe → AdaBoost</td>
+<td style="text-align: center;">11,00%</td>
+<td style="text-align: center;">7,84%</td>
+<td style="text-align: center;">96/294</td>
+<td style="text-align: center;">179/294</td>
+</tr>
+</tbody>
+</table><span class="slide-num">10 / 15</span></section>
+<section class="slide" data-index="10"><h2>Pipeline Antiga — O Problema Real</h2>
+<p>A média altíssima (742%) é causada por <strong>outliers extremos</strong> — dias onde a previsão foi completamente equivocada:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th style="text-align: center;">Pipeline Antiga</th>
+<th style="text-align: center;">Melhor Candidato</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MAPE Médio</strong></td>
+<td style="text-align: center;"><strong>742%</strong></td>
+<td style="text-align: center;"><strong>9,81%</strong></td>
+</tr>
+<tr>
+<td><strong>Mediana</strong></td>
+<td style="text-align: center;">7,49%</td>
+<td style="text-align: center;">6,81%</td>
+</tr>
+<tr>
+<td><strong>Q1</strong></td>
+<td style="text-align: center;">3,18%</td>
+<td style="text-align: center;">3,51%</td>
+</tr>
+<tr>
+<td><strong>Q3</strong></td>
+<td style="text-align: center;">16,26%</td>
+<td style="text-align: center;">11,88%</td>
+</tr>
+<tr>
+<td><strong>Previsões &lt; 5%</strong></td>
+<td style="text-align: center;">125/303</td>
+<td style="text-align: center;">104/294</td>
+</tr>
+<tr>
+<td><strong>Previsões &lt; 10%</strong></td>
+<td style="text-align: center;">178/303</td>
+<td style="text-align: center;">197/294</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>[!warning] Interpretação<br />
+A mediana de 7,49% indica que na maioria dos dias o modelo atual funciona razoavelmente. O problema são os <strong>episódios de falha catastrófica</strong> que puxam a média para cima.</p>
+</blockquote><span class="slide-num">11 / 15</span></section>
+<section class="slide" data-index="11"><h2>Distribuição do MAPE — Comparação Visual</h2>
+<pre><code>Modelo                        |  Q1    Med    Q3     Outliers
+──────────────────────────────────────────────────────────────
+FEAT+ABR-3                    |  3,5%  6,8%  11,9%  ●●●
+FEAT+ABR-4                    |  3,3%  6,5%  12,6%  ●●●
+VotingRegressor (ET+RF+XGB)   |  3,4%  7,3%  12,7%  ●●●
+RandomForest                  |  3,2%  6,9%  11,9%  ●●●
+SelectKBest(k=6)+RF           |  3,4%  6,7%  12,2%  ●●●
+ExtraTrees                    |  3,3%  7,0%  13,4%  ●●●
+──────────────────────────────────────────────────────────────
+Pipeline Antiga               |  3,2%  7,5%  16,3%  ●●●●●●●●●●●
+                              |                      → até 143.000%+
+</code></pre>
+<p>Os candidatos top 15 têm <strong>caudas significativamente menores</strong> — os episódios de falha catastrófica da Pipeline Antiga não ocorrem nos novos modelos.</p><span class="slide-num">12 / 15</span></section>
+<section class="slide" data-index="12"><h2>Recomendação</h2>
+<blockquote>
+<p>[!success] Modelo recomendado para produção<br />
+<strong>FEAT+ABR-3</strong> (<code>FSS + AdaBoostRegressor</code>) — melhor MAPE médio (9,81%) e menor Q3 (11,88%)</p>
+<p>Alternativa interpretável: <strong>VotingRegressor (ExtraTrees + RandomForest + XGBoost)</strong><br />
+MAPE médio 9,91% · totalmente controlável · sem dependência do TPOT</p>
+</blockquote>
+<p><strong>Por que o VotingRegressor é uma boa alternativa?</strong><br />
+- Totalmente transparente — sem caixa-preta do TPOT<br />
+- Fácil de re-treinar e auditar<br />
+- Performance estatisticamente equivalente ao top TPOT<br />
+- Elimina os episódios de falha catastrófica da Pipeline Antiga</p>
+<p><strong>Ganho esperado vs Pipeline Atual:</strong><br />
+- Redução de <strong>742% → ~9,9%</strong> no MAPE médio<br />
+- Estabilidade: de <strong>178/303</strong> para <strong>196/294</strong> previsões abaixo de 10%</p><span class="slide-num">13 / 15</span></section>
+<section class="slide" data-index="13"><h2>Próximos Passos</h2>
+<table>
+<thead>
+<tr>
+<th>Ação</th>
+<th>Responsável</th>
+<th>Prazo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Validar modelo nos dados de maio/2026 (out-of-sample)</td>
+<td>Daniel</td>
+<td>Semana 1</td>
+</tr>
+<tr>
+<td>Definir modelo final (TPOT-09/2025 vs VotingRegressor)</td>
+<td>Gestores</td>
+<td>Semana 1</td>
+</tr>
+<tr>
+<td>Implementar em produção com monitoramento de MAPE diário</td>
+<td>Daniel</td>
+<td>Semana 2</td>
+</tr>
+<tr>
+<td>Criar alerta automático quando MAPE &gt; 15%</td>
+<td>Daniel</td>
+<td>Semana 2</td>
+</tr>
+<tr>
+<td>Avaliar extensão da metodologia para previsão de <strong>valor</strong></td>
+<td>Daniel</td>
+<td>Semana 3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Critério de aceite em produção:</strong> MAPE médio mensal ≤ 10%, sem episódios &gt; 50% em dias normais.</p><span class="slide-num">14 / 15</span></section>
+<section class="slide" data-index="14"><h2>Referências</h2>
+<ul>
+<li>Notebook de experimento: [[experimento_qtd]]</li>
+<li>Notebook Top 15 realinhado: [[top15_qtd_realinhado]]</li>
+<li>Backup de previsões: <code>resultados/backup_qtd.xlsx</code></li>
+<li>Modelos salvos: <code>modelos/quantidade/</code></li>
+</ul><span class="slide-num">15 / 15</span></section>
+</div>
+<div id="nav">
+  <button onclick="go(-1)">&#8592; Anterior</button>
+  <span id="counter" style="color:#fff;font-size:14px;padding:6px 10px;"></span>
+  <button onclick="go(1)">Próximo &#8594;</button>
+</div>
+<script>
+var cur = 0;
+var slides = document.querySelectorAll('.slide');
+var total  = slides.length;
+var prog   = document.getElementById('progress');
+var counter= document.getElementById('counter');
+
+function show(n) {
+  slides[cur].classList.remove('active');
+  cur = (n + total) % total;
+  slides[cur].classList.add('active');
+  prog.style.width = ((cur+1)/total*100) + '%';
+  counter.textContent = (cur+1) + ' / ' + total;
+}
+
+function go(d) { show(cur + d); }
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') go(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')  go(-1);
+  if (e.key === 'Home') show(0);
+  if (e.key === 'End')  show(total-1);
+});
+
+// Touch/swipe support
+var tsx = 0;
+document.addEventListener('touchstart', function(e) { tsx = e.touches[0].clientX; });
+document.addEventListener('touchend',   function(e) {
+  var dx = e.changedTouches[0].clientX - tsx;
+  if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+});
+
+show(0);
+</script>
+</body>
+</html>

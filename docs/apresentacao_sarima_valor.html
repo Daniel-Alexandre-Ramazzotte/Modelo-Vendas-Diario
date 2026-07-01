@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modelo de Previsão Diária — Quantidade de Propostas</title>
+<style>
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
+#deck { width: 100%; height: 100%; position: relative; }
+
+.slide {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: #fff;
+  padding: 52px 64px 44px 64px;
+  overflow: hidden;
+}
+.slide.active { display: flex; flex-direction: column; }
+
+/* --- Slide counter --- */
+.slide-num {
+  position: absolute;
+  bottom: 14px; right: 24px;
+  font-size: 13px; color: #aaa;
+}
+
+/* --- Nav --- */
+#nav {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 12px; z-index: 100;
+}
+#nav button {
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+  color: #fff; padding: 6px 18px; border-radius: 20px; cursor: pointer;
+  font-size: 14px; backdrop-filter: blur(4px);
+  transition: background 0.2s;
+}
+#nav button:hover { background: rgba(255,255,255,0.3); }
+#progress {
+  position: fixed; top: 0; left: 0; height: 3px;
+  background: #74b9ff; transition: width 0.3s; z-index: 200;
+}
+
+/* ── Custom CSS from Marp style block ── */
+
+
+/* ── Cover slide override ── */
+section.cover {
+  background: linear-gradient(135deg, #0a3d62 0%, #1e3799 100%) !important;
+  color: #ffffff !important;
+  justify-content: center !important;
+  align-items: flex-start !important;
+}
+section.cover h1 { color: #ffffff !important; border-bottom: 3px solid #74b9ff !important; font-size: 44px; }
+section.cover h2 { color: #a8d8ea !important; font-size: 26px; font-weight: 400; margin-top: 10px; }
+section.cover p   { color: #dfe6e9 !important; font-size: 18px; margin-top: 20px; }
+section.cover .slide-num { color: rgba(255,255,255,0.3) !important; }
+
+/* ── Section divider override ── */
+section.section-divider {
+  background: #1e3799 !important;
+  color: #ffffff !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center;
+}
+section.section-divider h2 { color: #ffffff !important; font-size: 36px; }
+section.section-divider h3 { color: #74b9ff !important; font-size: 26px; margin-top: 12px; }
+section.section-divider p  { color: #a8d8ea !important; font-size: 20px; margin-top: 10px; }
+section.section-divider .slide-num { color: rgba(255,255,255,0.3) !important; }
+
+/* ── General content ── */
+section h1 { font-size: 36px; color: #0a3d62; border-bottom: 2px solid #0a3d62; padding-bottom: 8px; margin-bottom: 16px; }
+section h2 { font-size: 28px; color: #1e3799; margin-bottom: 10px; }
+section h3 { font-size: 22px; color: #0a3d62; margin-bottom: 8px; }
+section p  { margin: 6px 0; line-height: 1.5; }
+section ul, section ol { margin: 6px 0 6px 22px; line-height: 1.6; }
+section li { margin: 3px 0; }
+section strong { color: #0a3d62; }
+
+section table { width: 100%; border-collapse: collapse; font-size: 17px; margin: 10px 0; }
+section th { background: #0a3d62; color: white; padding: 7px 10px; text-align: left; }
+section td { padding: 6px 10px; border-bottom: 1px solid #ddd; }
+section tr:nth-child(even) { background: #f0f4f8; }
+
+section pre  { background: #1a1a2e; color: #ecf0f1; padding: 14px; border-radius: 6px;
+               font-family: 'Consolas','Courier New',monospace; font-size: 14px;
+               line-height: 1.5; overflow-x: auto; margin: 10px 0; white-space: pre; }
+section code { font-family: 'Consolas','Courier New',monospace; }
+section p > code { background: #eaf2ff; color: #1e3799; padding: 1px 5px; border-radius: 3px; }
+
+section img { max-height: 62vh; max-width: 100%; display: block;
+              margin: 8px auto; object-fit: contain; }
+section figure { margin: 6px auto; text-align: center; }
+section figcaption { font-size: 14px; color: #666; margin-top: 4px; }
+
+.box {
+  border-left: 4px solid #1e3799;
+  background: #eaf2ff;
+  padding: 10px 16px;
+  border-radius: 4px;
+  margin: 10px 0;
+}
+.highlight { background: #27ae60; color: white; padding: 2px 7px; border-radius: 4px; font-weight: bold; }
+.warn      { background: #e74c3c; color: white; padding: 2px 7px; border-radius: 4px; font-weight: bold; }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div id="deck">
+<section class="slide cover" data-index="0"><h1>Modelagem SARIMA/SARIMAX da série diária de Valor de Propostas</h1>
+<h2>Econometria e Análise de Intervenção</h2>
+<p>Séries temporais clássicas, análise de intervenção (Box–Tiao) e teste de cointegração<br />
+aplicados às séries diárias de <strong>valor</strong> e <strong>quantidade</strong> de propostas (etapa 16).</p>
+<p><strong>Daniel Ramazzotte</strong> · Julho/2026</p></section>
+<section class="slide" data-index="1"><h2>Agenda</h2>
+<ol>
+<li><strong>Motivação</strong> — por que um modelo branco de séries temporais</li>
+<li><strong>Metodologia</strong> — variáveis, métodos e desenho de validação</li>
+<li><strong>Estimação</strong> — ordem, coeficientes e interpretação</li>
+<li><strong>Análise de Intervenção</strong> — dias atípicos (pulso × degrau)</li>
+<li><strong>Cointegração</strong> — valor × quantidade</li>
+<li><strong>Adequação</strong> — diagnóstico dos resíduos</li>
+<li><strong>Capacidade preditiva</strong> — ranking walk-forward e demais modelos</li>
+<li><strong>Escolha do melhor modelo</strong> e conclusões</li>
+</ol><span class="slide-num">1 / 35</span></section>
+<section class="slide section-divider" data-index="2"><h2>1. Motivação</h2>
+<h3>Por que série temporal clássica, e não só AutoML?</h3><span class="slide-num">2 / 35</span></section>
+<section class="slide" data-index="3"><h2>Motivação</h2>
+<p>O modelo em produção (<strong>Pipeline TPOT / ML</strong>) prevê bem, mas é uma <strong>caixa-preta</strong>: não diz<br />
+<em>o quanto</em> a fila pesa, nem <em>como</em> a série se comporta ao longo do tempo. Para uma leitura<br />
+econométrica, precisamos de um modelo <strong>branco</strong>.</p>
+<ul>
+<li><strong>Interpretabilidade.</strong> Cada termo (média móvel, sazonalidade, efeito da fila, efeito dos<br />
+  dias de erro) vem com <strong>coeficiente, erro-padrão e p-valor</strong>.</li>
+<li><strong>Estrutura temporal explícita.</strong> Tendência (diferenciação <code>d=1</code>), choque do dia anterior<br />
+  (MA), sazonalidade semanal (<code>m=5</code>) — o ML só capta isso de forma indireta via lags.</li>
+<li><strong>Tratamento transparente dos dias atípicos.</strong> Em vez de simplesmente descartá-los, usamos<br />
+  um <strong>modelo de intervenção</strong> (Box–Tiao) que mede o efeito de cada evento.</li>
+</ul>
+<blockquote>
+<p>[!important] Meta<br />
+Um <em>benchmark</em> clássico interpretável, competitivo com o melhor ML, que <strong>explique</strong> o que<br />
+move a série de valor.</p>
+</blockquote><span class="slide-num">3 / 35</span></section>
+<section class="slide" data-index="4"><h2>As duas séries — Valor e Quantidade</h2>
+<p>Agregação <strong>diária</strong> das propostas da etapa 16, apenas <strong>dias úteis</strong> (exclui sábados,<br />
+domingos e feriados via <code>workadays</code>) → sazonalidade semanal regular <code>m = 5</code>.</p>
+<ul>
+<li><strong>Valor (R$):</strong> valor monetário processado no dia — série-alvo principal.</li>
+<li><strong>Quantidade:</strong> nº de propostas analisadas no dia — série de apoio (e candidata à<br />
+  cointegração com o valor).</li>
+<li>Histórico completo: <strong>~409 dias úteis</strong> (08/11/2024 → 23/06/2026).</li>
+</ul>
+<p><img alt="Série de valor com médias móveis de 5 e 20 dias; linhas verticais = dias de intervenção" src="img_sarima/valor_serie.png" /></p><span class="slide-num">4 / 35</span></section>
+<section class="slide section-divider" data-index="5"><h2>2. Metodologia</h2>
+<h3>Variáveis, métodos e desenho de validação</h3><span class="slide-num">5 / 35</span></section>
+<section class="slide" data-index="6"><h2>Variáveis do modelo</h2>
+<table>
+<thead>
+<tr>
+<th>Papel</th>
+<th>Valor</th>
+<th>Quantidade</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Endógena</strong> <code>y_t</code></td>
+<td>valor diário (R$)</td>
+<td>quantidade diária</td>
+</tr>
+<tr>
+<td><strong>Exógena D-1</strong></td>
+<td><code>fila_d1</code> — fila de pagamento de ontem (etapa 15)</td>
+<td><code>valor_d1</code> — valor de ontem</td>
+</tr>
+<tr>
+<td><strong>Dummies calendário</strong></td>
+<td>dia-da-semana (<code>ter…sex</code>; 2ª = referência)</td>
+<td>idem</td>
+</tr>
+<tr>
+<td><strong>Intervenção</strong></td>
+<td><code>pulso/degrau</code> dos dias especiais</td>
+<td>idem</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>A <strong>exógena é sempre de D-1</strong> (conhecida no momento da previsão → sem vazamento).</li>
+<li><strong>Dummies de dia-da-semana</strong> capturam o padrão semanal <strong>pelo dia real</strong>, não pela posição<br />
+<code>t-5</code> na grade (que desalinha quando um feriado some da série).</li>
+<li><strong>Segunda-feira é a categoria de referência</strong> (<code>drop_first</code>) para evitar colinearidade.</li>
+</ul><span class="slide-num">6 / 35</span></section>
+<section class="slide" data-index="7"><h2>Métodos — em uma frase cada</h2>
+<ul>
+<li><strong>ARIMA(p,d,q).</strong> Auto-regressivo + diferenciação + média móvel.</li>
+<li><strong><code>d = 1</code>.</strong> A série é <strong>I(1)</strong> (não-estacionária em nível, estacionária na 1ª diferença,<br />
+  confirmado por ADF/KPSS). Uma diferença remove a tendência/nível.</li>
+<li><strong>MA(1) — <code>ma.L1</code>.</strong> Corrige a previsão pelo <strong>choque (erro) do dia anterior</strong> →<br />
+  suavização tipo média móvel exponencial.</li>
+<li><strong>SARIMA — sazonal <code>m=5</code>.</strong> Termo <code>ma.S.L5</code> capta o resíduo do padrão semanal.</li>
+<li><strong>SARIMAX — o "X".</strong> Acrescenta regressores exógenos (<code>fila_d1</code> + dummies).</li>
+<li><strong>Intervenção (Box–Tiao).</strong> Dummies de <strong>pulso</strong> ou <strong>degrau</strong> para os dias atípicos.</li>
+</ul><span class="slide-num">7 / 35</span></section>
+<section class="slide" data-index="8"><h2>Análise clássica da série</h2>
+<p>Antes de estimar: <strong>estacionariedade</strong> (ADF/KPSS), <strong>autocorrelação</strong> (ACF/PACF) e<br />
+<strong>decomposição</strong> (STL, período 5).</p>
+<p><img alt="ACF/PACF em nível (decaimento lento → I(1)) e na 1ª diferença (corte abrupto → MA)" src="img_sarima/valor_acf.png" /></p>
+<ul>
+<li>ACF em <strong>nível decai lentamente</strong> → não-estacionária → justifica <code>d=1</code>.</li>
+<li>Na <strong>1ª diferença</strong>, ACF com pico negativo no lag 1 → assinatura de <strong>MA(1)</strong>.</li>
+</ul><span class="slide-num">8 / 35</span></section>
+<section class="slide" data-index="9"><h2>Decomposição STL (período = 5)</h2>
+<p>Tendência suave de médio prazo + <strong>sazonalidade semanal clara</strong> + resíduo com <em>spikes</em> nos<br />
+dias atípicos (que a intervenção vai tratar).</p>
+<p><img alt="Decomposição STL do valor: tendência, sazonal semanal e resíduo" src="img_sarima/valor_stl.png" /></p><span class="slide-num">9 / 35</span></section>
+<section class="slide" data-index="10"><h2>Seleção de ordem — <code>pmdarima.auto_arima</code></h2>
+<p>Busca <em>stepwise</em> por <strong>AIC</strong>, sazonalidade <code>m = 5</code>, escolhida <strong>uma vez</strong> por série<br />
+(<em>fallback</em> fixo se a busca falhar).</p>
+<table>
+<thead>
+<tr>
+<th>Série</th>
+<th>Ordem selecionada</th>
+<th style="text-align: center;">AIC (univariado)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Valor</strong></td>
+<td><code>SARIMA(0,1,1)(0,0,1,5)</code></td>
+<td style="text-align: center;">12.020,7</td>
+</tr>
+<tr>
+<td><strong>Quantidade</strong></td>
+<td><code>SARIMA(0,1,1)(0,0,2,5)</code></td>
+<td style="text-align: center;">5.901,3</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>(0,1,1)</code>: 1 diferença (I(1)) + <strong>MA(1)</strong> para o choque do dia anterior.</li>
+<li><code>(0,0,1,5)</code> / <code>(0,0,2,5)</code>: <strong>MA sazonal</strong> no lag 5 (semanal).</li>
+<li>Mesma especificação é reajustada em <strong>todos os folds</strong> do walk-forward.</li>
+</ul><span class="slide-num">10 / 35</span></section>
+<section class="slide" data-index="11"><h2>Validação — Walk-forward × ajuste "normal"</h2>
+<p>O ponto que torna a comparação <strong>honesta</strong>: replicar a operação real (retreina todo dia,<br />
+prevê o próximo).</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>Walk-forward</strong></th>
+<th><strong>Normal (1 ajuste)</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nº de ajustes</td>
+<td><strong>N</strong> (um por dia)</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Usa dados futuros p/ estimar?</td>
+<td><strong>Não</strong> (sem vazamento)</td>
+<td>in-sample: sim; split: não</td>
+</tr>
+<tr>
+<td>O que mede</td>
+<td><strong>Erro out-of-sample realista</strong></td>
+<td>qualidade de ajuste / 1 ponto</td>
+</tr>
+<tr>
+<td>Custo</td>
+<td>N× mais lento</td>
+<td>barato</td>
+</tr>
+<tr>
+<td>Onde no estudo</td>
+<td>ranking e correção de viés</td>
+<td>seções de diagnóstico</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>[!note]<br />
+O MAPE/RMSPE do <strong>ranking</strong> vem do walk-forward 1-passo — comparável de igual para igual<br />
+com a Pipeline Antiga (que no backup também é previsão diária de 1 passo).</p>
+</blockquote><span class="slide-num">11 / 35</span></section>
+<section class="slide" data-index="12"><h2>Dias removidos do ranking + correção de viés</h2>
+<p><strong>Dias atípicos</strong> (<code>Log_Erro</code> e vésperas) são <strong>retirados do <code>datas_eval</code></strong>: o ranking<br />
+pontua apenas <strong>dias normais</strong>, que são o alvo real.</p>
+<ul>
+<li>Nesses dias normais as colunas de intervenção valem <strong>0</strong> → a intervenção <strong>não</strong> prevê o<br />
+  dia do evento.</li>
+<li>O ganho é <strong>indireto</strong>: as dummies <strong>descontaminam o ajuste</strong> — os coeficientes AR/MA são<br />
+  estimados <strong>limpos</strong>, sem serem puxados pelos <em>spikes</em> → previsões melhores nos dias normais.</li>
+</ul>
+<p><strong>Correção de viés (<code>aplica_debias</code>).</strong> Sobre a sequência walk-forward, corrige a próxima<br />
+previsão pela <strong>média dos erros passados</strong> (janela 10 dias, <code>rolling + shift(1)</code> → sem<br />
+vazamento). Quase zera o viés ao custo de ~0,3 p.p. de RMSPE.</p><span class="slide-num">12 / 35</span></section>
+<section class="slide" data-index="13"><h2>Dummies de dia-da-semana — alinhamento</h2>
+<p>Adicionadas na exógena (<code>dow_ter…dow_sex</code>, 2ª = referência), então usadas por <strong>SARIMAX</strong> e<br />
+pelos ajustes de intervenção que recebem exógena.</p>
+<ul>
+<li>Capturam o padrão semanal pelo <strong>dia real</strong>, robusto à ausência de feriados na grade.</li>
+<li>Bônus: o efeito de cada intervenção passa a ser estimado <strong>controlando o dia da semana</strong>.</li>
+<li><strong>SARIMA puro permanece univariado</strong> (<code>exog=None</code>, só <code>m=5</code>) <strong>por design</strong>: assim o<br />
+  ranking mostra diretamente <strong>se as dummies ajudam</strong> (SARIMA sem × SARIMAX com).</li>
+</ul>
+<blockquote>
+<p>[!note]<br />
+No walk-forward a exógena é padronizada por z-score (reparametrização linear, previsão<br />
+idêntica). Com <code>MIN_TREINO≈25</code> (~5 semanas) todos os dias-da-semana aparecem em qualquer<br />
+janela → sem matriz singular.</p>
+</blockquote><span class="slide-num">13 / 35</span></section>
+<section class="slide section-divider" data-index="14"><h2>3. Estimação</h2>
+<h3>Coeficientes e interpretação (SARIMAX — Valor)</h3><span class="slide-num">14 / 35</span></section>
+<section class="slide" data-index="15"><h2>Coeficientes do SARIMAX — Valor</h2>
+<p>Ajuste in-sample no histórico completo, <code>fila_d1</code> padronizada (z-score) + dummy de pulso:</p>
+<pre><code>              SARIMAX(0,1,1)x(0,0,1,5)  —  N=404  —  AIC = 11.631
+================================================================================
+              coef        std err     z      P&gt;|z|    interpretação
+--------------------------------------------------------------------------------
+fila_d1_z   +1,027e+05   2,34e+04   +4,38   0,000   efeito da fila D-1 (padronizada)
+pulso_erro  -4,545e+05   9,30e+04   -4,89   0,000   efeito dos dias de erro
+ma.L1          -0,7829     0,034   -22,87   0,000   choque MA(1) não-sazonal
+ma.S.L5        -0,0862     0,046    -1,87   0,062   sazonal semanal (limítrofe)
+================================================================================
+</code></pre>
+<ul>
+<li><strong><code>fila_d1</code> (+R$102,7 mil/desvio, p&lt;0,001):</strong> +1 dp de fila (~54 propostas) → <strong>~R$102,7 mil</strong><br />
+  a mais no valor do dia (~R$1,9 mil por proposta a mais na fila). Fila é <em>driver</em> antecedente.</li>
+<li><strong><code>pulso_erro</code> (−R$454,5 mil, p&lt;0,001):</strong> dias de erro derrubam o valor ~<strong>10%</strong> da média<br />
+  diária → valida tratá-los como <strong>intervenção</strong>, não ruído.</li>
+<li><strong><code>ma.L1</code> (−0,78):</strong> principal mecanismo preditivo — corrige o nível por <strong>78% do choque de ontem</strong>.</li>
+<li><strong><code>ma.S.L5</code> (−0,086, p≈0,06):</strong> resíduo semanal fraco (a maior parte já foi absorvida).</li>
+</ul><span class="slide-num">15 / 35</span></section>
+<section class="slide" data-index="16"><h2>AIC — os regressores ajudam?</h2>
+<table>
+<thead>
+<tr>
+<th>Especificação</th>
+<th style="text-align: center;">AIC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SARIMA univariado (sem exógena/intervenção)</td>
+<td style="text-align: center;">11.640</td>
+</tr>
+<tr>
+<td><strong>SARIMAX</strong> (<code>fila_d1</code> + <code>pulso_erro</code>)</td>
+<td style="text-align: center;"><strong>11.631</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Os dois regressores <strong>reduzem o AIC</strong> e ambos são <strong>altamente significativos (p &lt; 0,001)</strong> —<br />
+evidência de que a fila D-1 e a intervenção agregam informação genuína, não só grau de<br />
+liberdade.</p><span class="slide-num">16 / 35</span></section>
+<section class="slide section-divider" data-index="17"><h2>4. Análise de Intervenção</h2>
+<h3>Dias atípicos: pulso × degrau (Box–Tiao)</h3><span class="slide-num">17 / 35</span></section>
+<section class="slide" data-index="18"><h2>Modelo de intervenção — pulso × degrau</h2>
+<p>Para cada <strong>dia especial</strong> (eventos do <code>Log_Erro</code> operacional + vésperas de feriado)<br />
+ajustamos SARIMA/SARIMAX com <strong>regressores de intervenção</strong> e classificamos o efeito:</p>
+<ul>
+<li><strong>Pulso (impulso):</strong> efeito <strong>transitório</strong>, restrito ao(s) dia(s) do evento<br />
+  (dummy = 1 no evento, 0 nos demais). Típico de <strong>paradas operacionais</strong>.</li>
+<li><strong>Degrau (step):</strong> <strong>mudança de nível permanente</strong> a partir do evento<br />
+  (dummy = 0 antes, 1 do evento em diante). Típico de <strong>mudanças estruturais</strong>.</li>
+</ul>
+<p><strong>Escolha:</strong> por evento ajustamos os dois modelos e ficamos com o de coeficiente<br />
+<strong>significativo (p &lt; 0,05)</strong> e menor <strong>AIC</strong>. Aqui a série <strong>mantém</strong> os dias especiais —<br />
+é necessário para estimar o efeito.</p><span class="slide-num">18 / 35</span></section>
+<section class="slide" data-index="19"><h2>Efeito estimado por evento — Valor</h2>
+<p>18 eventos classificados. Predominam efeitos <strong>negativos</strong> (paradas/erros derrubam o valor);<br />
+Carnaval aparece como <strong>positivo</strong> (acúmulo pós-feriado).</p>
+<p><img alt="Efeito estimado por evento (abrupto × gradual), série de valor / SARIMAX" src="img_sarima/interv_efeito.png" /></p><span class="slide-num">19 / 35</span></section>
+<section class="slide" data-index="20"><h2>A intervenção limpa o ajuste — resíduo pré × pós</h2>
+<p>Comparando o SARIMA <strong>sem</strong> e <strong>com</strong> as dummies de intervenção (valor, N=409):</p>
+<table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th style="text-align: center;">AIC</th>
+<th style="text-align: center;">BIC</th>
+<th style="text-align: center;">DP resíduo</th>
+<th style="text-align: center;">MAE resíduo</th>
+<th style="text-align: center;">LB p(10)</th>
+<th style="text-align: center;">LB p(20)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PRÉ (sem intervenção)</td>
+<td style="text-align: center;">5.728</td>
+<td style="text-align: center;">5.744</td>
+<td style="text-align: center;">359,4</td>
+<td style="text-align: center;">246,6</td>
+<td style="text-align: center;"><strong>0,01</strong></td>
+<td style="text-align: center;">0,00</td>
+</tr>
+<tr>
+<td><strong>PÓS (com intervenção)</strong></td>
+<td style="text-align: center;"><strong>5.641</strong></td>
+<td style="text-align: center;"><strong>5.669</strong></td>
+<td style="text-align: center;"><strong>327,2</strong></td>
+<td style="text-align: center;"><strong>230,9</strong></td>
+<td style="text-align: center;"><strong>0,36</strong></td>
+<td style="text-align: center;">0,18</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>AIC cai</strong> (5.728 → 5.641), <strong>desvio do resíduo cai</strong> (359 → 327).</li>
+<li><strong>Ljung-Box deixa de rejeitar</strong> (p 0,01 → 0,36): a autocorrelação residual que os <em>spikes</em><br />
+  causavam <strong>desaparece</strong> → dinâmica de curto prazo bem capturada.</li>
+</ul><span class="slide-num">20 / 35</span></section>
+<section class="slide" data-index="21"><h2>Honestidade metodológica</h2>
+<blockquote>
+<p>[!important] A sutileza<br />
+A intervenção entra no ranking como <strong>descontaminação do ajuste</strong>, não como predição do<br />
+dia do evento. Nos dias avaliados (normais) as dummies valem 0; o benefício é que os<br />
+parâmetros AR/MA saem estimados sem serem puxados pelos <em>spikes</em> passados.</p>
+</blockquote>
+<p><strong>Um look-ahead pequeno e estrutural:</strong> a <strong>classificação da forma</strong> (abrupto × gradual) é<br />
+calculada <strong>uma vez na série inteira</strong>; já os <strong>coeficientes</strong> são reestimados a cada dia no<br />
+walk-forward (<code>iloc[:loc]</code>, só o passado). A maior parte da informação é <strong>calendário</strong><br />
+(vésperas e dias de log são conhecidos de antemão), então reclassificar dentro do<br />
+walk-forward custaria caro e mudaria pouco.</p><span class="slide-num">21 / 35</span></section>
+<section class="slide section-divider" data-index="22"><h2>5. Cointegração — Valor × Quantidade</h2>
+<h3>Existe equilíbrio de longo prazo entre as duas séries?</h3><span class="slide-num">22 / 35</span></section>
+<section class="slide" data-index="23"><h2>Cointegração — a pergunta e o pré-requisito</h2>
+<p>Cointegração testa-se nos <strong>níveis</strong>, não nas diferenças. O pré-requisito é que ambas sejam<br />
+<strong>I(1)</strong> — o que a diferenciação já confirmou.</p>
+<ul>
+<li><strong>Ambas I(1):</strong> ADF em nível não rejeita raiz unitária (valor p=0,86; qtd p=0,54); na 1ª<br />
+  diferença p=0,00.</li>
+<li><strong>Interpretação econômica:</strong> se cointegradas com vetor <code>(1, −β)</code>, o <strong>ticket médio</strong><br />
+  (<code>valor/qtd</code>) seria estacionário → proporcionalidade estável.</li>
+<li><strong>Testes:</strong> Engle-Granger e Johansen sobre os níveis; ADF do ticket médio.</li>
+</ul><span class="slide-num">23 / 35</span></section>
+<section class="slide" data-index="24"><h2>Resultado — não há cointegração confiável</h2>
+<table>
+<thead>
+<tr>
+<th>Teste</th>
+<th>Estatística</th>
+<th>Resultado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Engle-Granger</strong></td>
+<td>p = 0,96</td>
+<td><strong>NÃO rejeita</strong> H0 → sem cointegração</td>
+</tr>
+<tr>
+<td>Johansen (traço, sem tendência)</td>
+<td>1 relação</td>
+<td>ambíguo</td>
+</tr>
+<tr>
+<td>Johansen (com tendência)</td>
+<td>2 relações</td>
+<td>vs. ADF-<code>ct</code> indica <strong>trend-stationary</strong></td>
+</tr>
+<tr>
+<td><strong>ADF do ticket médio</strong></td>
+<td>p = 0,86</td>
+<td>erro de equilíbrio <strong>não-estacionário</strong></td>
+</tr>
+</tbody>
+</table>
+<p><img alt="Níveis padronizados e resíduo de equilíbrio (valor − 2234·qtd + const) com deriva persistente" src="img_sarima/coint.png" /></p>
+<blockquote>
+<p>[!warning] Conclusão<br />
+O erro de equilíbrio <strong>deriva</strong> (não volta à média) → <strong>modelar as séries separadamente</strong>.<br />
+Como as ordens ficam mistas I(0)/I(1) para a qtd, o <em>follow-up</em> correto seria o <strong>teste de<br />
+limites ARDL</strong> (Pesaran-Shin-Smith), não VECM.</p>
+</blockquote><span class="slide-num">24 / 35</span></section>
+<section class="slide section-divider" data-index="25"><h2>6. Adequação</h2>
+<h3>Diagnóstico do ajuste (resíduos)</h3><span class="slide-num">25 / 35</span></section>
+<section class="slide" data-index="26"><h2>Diagnóstico dos resíduos — SARIMAX Valor</h2>
+<p><img alt="plot_diagnostics: resíduo padronizado, histograma vs N(0,1), Q-Q e correlograma" src="img_sarima/valor_diagnostico.png" /></p>
+<ul>
+<li><strong>Autocorrelação:</strong> correlograma dentro das bandas; Ljung-Box <strong>não rejeita</strong> (Prob(Q)≈0,67)<br />
+  → <strong>curto prazo bem modelado</strong>.</li>
+<li><strong>Ressalvas:</strong> <strong>heterocedasticidade</strong> (Prob(H)≈0,00) e <strong>caudas pesadas/assimetria</strong><br />
+  (Jarque-Bera signif., curtose≈8,5) — erros maiores em dias atípicos.</li>
+<li>Matriz de covariância quase singular (<code>σ²</code> grande) → ler os <strong>erros-padrão de σ² com<br />
+  cautela</strong>; a significância de <code>fila_d1</code>/<code>pulso_erro</code> (z≈4–5) é robusta.</li>
+</ul>
+<p>Isso <strong>justifica</strong> a intervenção (trata os <em>spikes</em>) e a <strong>correção de viés</strong> por cima.</p><span class="slide-num">26 / 35</span></section>
+<section class="slide section-divider" data-index="27"><h2>7. Capacidade preditiva</h2>
+<h3>Ranking walk-forward 1-passo</h3><span class="slide-num">27 / 35</span></section>
+<section class="slide" data-index="28"><h2>Ranking — Valor (N = 210, ordenado por RMSPE)</h2>
+<table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th style="text-align: center;">MAPE %</th>
+<th style="text-align: center;">RMSPE %</th>
+<th style="text-align: center;">R²</th>
+<th style="text-align: center;">|Viés| (R$)</th>
+<th style="text-align: center;">Mediana %</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SARIMAX</strong></td>
+<td style="text-align: center;">7,34</td>
+<td style="text-align: center;"><strong>9,22</strong></td>
+<td style="text-align: center;"><strong>0,75</strong></td>
+<td style="text-align: center;">11.924</td>
+<td style="text-align: center;">6,15</td>
+</tr>
+<tr>
+<td>Pipeline Antiga em Produção</td>
+<td style="text-align: center;"><strong>7,21</strong></td>
+<td style="text-align: center;">9,55</td>
+<td style="text-align: center;">0,74</td>
+<td style="text-align: center;">28.974</td>
+<td style="text-align: center;">5,32</td>
+</tr>
+<tr>
+<td>SARIMA (univariado)</td>
+<td style="text-align: center;">7,57</td>
+<td style="text-align: center;">9,55</td>
+<td style="text-align: center;">0,75</td>
+<td style="text-align: center;">25.049</td>
+<td style="text-align: center;">6,45</td>
+</tr>
+<tr>
+<td>SARIMAX (corrigido)</td>
+<td style="text-align: center;">7,61</td>
+<td style="text-align: center;">9,73</td>
+<td style="text-align: center;">0,73</td>
+<td style="text-align: center;">5.631</td>
+<td style="text-align: center;">6,25</td>
+</tr>
+<tr>
+<td>SARIMA (corrigido)</td>
+<td style="text-align: center;">7,89</td>
+<td style="text-align: center;">10,03</td>
+<td style="text-align: center;">0,72</td>
+<td style="text-align: center;">3.941</td>
+<td style="text-align: center;">6,56</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>SARIMAX tem o melhor RMSPE e o melhor R²</strong> entre todos os candidatos.</li>
+<li>Fica ~0,1 p.p. atrás da Antiga só no <strong>MAPE médio</strong> — mas a Antiga é <strong>retreinada quase<br />
+  diariamente</strong>; o SARIMAX usa uma única especificação.</li>
+</ul><span class="slide-num">28 / 35</span></section>
+<section class="slide" data-index="29"><h2>Valor — previsto × realizado (SARIMAX)</h2>
+<p><img alt="SARIMAX × Realizado × Pipeline Antiga ao longo de todo o período de avaliação" src="img_sarima/valor_pred_real.png" /></p>
+<p>O SARIMAX acompanha bem o nível e a sazonalidade; os maiores erros concentram-se nos<br />
+<em>saltos</em> pós-atípicos (justamente onde a Antiga também erra).</p><span class="slide-num">29 / 35</span></section>
+<section class="slide" data-index="30"><h2>Ranking — Quantidade (N = 262)</h2>
+<table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th style="text-align: center;">MAPE %</th>
+<th style="text-align: center;">RMSPE %</th>
+<th style="text-align: center;">R²</th>
+<th style="text-align: center;">Mediana %</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SARIMA (univariado)</strong></td>
+<td style="text-align: center;"><strong>7,38</strong></td>
+<td style="text-align: center;"><strong>9,22</strong></td>
+<td style="text-align: center;"><strong>0,47</strong></td>
+<td style="text-align: center;">6,50</td>
+</tr>
+<tr>
+<td>SARIMA (corrigido)</td>
+<td style="text-align: center;">7,69</td>
+<td style="text-align: center;">9,73</td>
+<td style="text-align: center;">0,41</td>
+<td style="text-align: center;">6,32</td>
+</tr>
+<tr>
+<td>SARIMAX</td>
+<td style="text-align: center;">7,64</td>
+<td style="text-align: center;">10,01</td>
+<td style="text-align: center;">0,38</td>
+<td style="text-align: center;">6,01</td>
+</tr>
+<tr>
+<td>Pipeline Antiga em Produção</td>
+<td style="text-align: center;">8,01</td>
+<td style="text-align: center;">10,23</td>
+<td style="text-align: center;">0,36</td>
+<td style="text-align: center;">6,38</td>
+</tr>
+<tr>
+<td>SARIMAX (corrigido)</td>
+<td style="text-align: center;">8,07</td>
+<td style="text-align: center;">10,54</td>
+<td style="text-align: center;">0,31</td>
+<td style="text-align: center;">6,42</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>[!warning] Contraste importante<br />
+Para a <strong>quantidade</strong>, o <strong>SARIMA univariado vence</strong> — a exógena <code>valor_d1</code> <strong>não ajuda</strong><br />
+(piora RMSPE). O padrão semanal <code>m=5</code> já basta. Confirma o valor de deixar SARIMA e SARIMAX<br />
+lado a lado no ranking.</p>
+</blockquote><span class="slide-num">30 / 35</span></section>
+<section class="slide" data-index="31"><h2>Outros modelos testados</h2>
+<table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th>O que é</th>
+<th>Resultado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ARDL (bounds test)</strong></td>
+<td>Relação de longo prazo com ordens mistas I(0)/I(1)</td>
+<td><em>follow-up</em> da cointegração; não superou o SARIMAX</td>
+</tr>
+<tr>
+<td><strong>Log-retorno</strong></td>
+<td>Modela <code>r_t = ln(y_t/y_{t-1})</code>, estabiliza variância</td>
+<td>competitivo, mas atrás do SARIMAX</td>
+</tr>
+<tr>
+<td><strong>Nowcast mensal</strong></td>
+<td>Realizado acumulado + previsão dos dias restantes</td>
+<td>converge para o total real ao longo do mês</td>
+</tr>
+<tr>
+<td><strong>SARIMAX mensal</strong></td>
+<td>Uma previsão do total do mês antes de ele começar</td>
+<td>linha de referência</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="Nowcast do total do mês (out/2025): converge para o realizado conforme o mês avança" src="img_sarima/nowcast_valor.png" /></p><span class="slide-num">31 / 35</span></section>
+<section class="slide section-divider" data-index="32"><h2>8. Escolha do melhor modelo</h2><span class="slide-num">32 / 35</span></section>
+<section class="slide" data-index="33"><h2>Recomendação</h2>
+<blockquote>
+<p>[!success] Valor → SARIMAX <code>(0,1,1)(0,0,1,5)</code> + <code>fila_d1</code> + <code>pulso_erro</code><br />
+Melhor <strong>RMSPE (9,22%)</strong> e <strong>R² (0,75)</strong> do estudo; MAPE (7,34%) praticamente empatado com<br />
+a Pipeline Antiga, com a vantagem decisiva de ser <strong>interpretável</strong>.</p>
+<p>[!success] Quantidade → SARIMA univariado <code>(0,1,1)(0,0,2,5)</code><br />
+A exógena não ajuda; o modelo univariado com sazonalidade semanal é o melhor e o mais<br />
+parcimonioso (MAPE 7,38%, RMSPE 9,22%).</p>
+</blockquote>
+<p><strong>O SARIMAX de valor mostra, com significância estatística, que:</strong><br />
+1. a <strong>fila do dia anterior</strong> é <em>driver</em> positivo e forte (+R$1,9 mil/proposta);<br />
+2. os <strong>dias de erro operacional</strong> derrubam o valor em ~10% e merecem intervenção;<br />
+3. a dinâmica diária é bem descrita por <strong>suavização MA(1)</strong> com leve componente semanal.</p><span class="slide-num">33 / 35</span></section>
+<section class="slide" data-index="34"><h2>Conclusões, limitações e próximos passos</h2>
+<p><strong>Conclusões</strong><br />
+- Modelo <strong>branco</strong> competitivo com o melhor ML e <strong>superior no RMSPE</strong> para valor.<br />
+- A <strong>análise de intervenção</strong> melhora o ajuste (AIC↓, Ljung-Box deixa de rejeitar).<br />
+- <strong>Sem cointegração</strong> valor × qtd → séries modeladas separadamente.</p>
+<p><strong>Limitações</strong><br />
+- Heterocedasticidade e caudas pesadas nos resíduos (mitigadas por intervenção + debias).<br />
+- Classificação da forma da intervenção com pequeno look-ahead estrutural (calendário).<br />
+- Não substitui a Pipeline Antiga em produção (retreinada quase diariamente).</p>
+<p><strong>Próximos passos</strong><br />
+- Injetar intervenções (Carnaval/vésperas) como exógena futura determinística no nowcast.<br />
+- Avaliar reclassificação da intervenção dentro do walk-forward (rigor total).</p><span class="slide-num">34 / 35</span></section>
+<section class="slide" data-index="35"><h2>Referências</h2>
+<ul>
+<li>Notebook do experimento: [[experimento_sarimax]]</li>
+<li>Justificativa detalhada: <code>docs/justificativa_sarimax_valor.md</code></li>
+<li>Scripts de produção: <code>scripts/producao/projecoes_valor.py</code>, <code>projecoes_qtd.py</code></li>
+<li>Backups de previsão: <code>resultados/backup_valor.xlsx</code>, <code>backup_qtd.xlsx</code></li>
+</ul><span class="slide-num">35 / 35</span></section>
+</div>
+<div id="nav">
+  <button onclick="go(-1)">&#8592; Anterior</button>
+  <span id="counter" style="color:#fff;font-size:14px;padding:6px 10px;"></span>
+  <button onclick="go(1)">Próximo &#8594;</button>
+</div>
+<script>
+var cur = 0;
+var slides = document.querySelectorAll('.slide');
+var total  = slides.length;
+var prog   = document.getElementById('progress');
+var counter= document.getElementById('counter');
+
+function show(n) {
+  slides[cur].classList.remove('active');
+  cur = (n + total) % total;
+  slides[cur].classList.add('active');
+  prog.style.width = ((cur+1)/total*100) + '%';
+  counter.textContent = (cur+1) + ' / ' + total;
+}
+
+function go(d) { show(cur + d); }
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') go(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')  go(-1);
+  if (e.key === 'Home') show(0);
+  if (e.key === 'End')  show(total-1);
+});
+
+// Touch/swipe support
+var tsx = 0;
+document.addEventListener('touchstart', function(e) { tsx = e.touches[0].clientX; });
+document.addEventListener('touchend',   function(e) {
+  var dx = e.changedTouches[0].clientX - tsx;
+  if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+});
+
+show(0);
+</script>
+</body>
+</html>

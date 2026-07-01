@@ -10,6 +10,8 @@ from sklearn.metrics import mean_absolute_percentage_error
 import clickhouse_connect
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+while not os.path.exists(os.path.join(BASE_DIR, 'CLAUDE.md')) and os.path.dirname(BASE_DIR) != BASE_DIR:
+    BASE_DIR = os.path.dirname(BASE_DIR)
 
 if wd.is_workday(datetime.today(),country='BR'):
 
@@ -67,6 +69,48 @@ if wd.is_workday(datetime.today(),country='BR'):
     df_agrupado = df[(df['data'] <= data_referencia) & (df['data'] >= data_min)]
     df_agrupado = df_agrupado.groupby('data').agg({'qntd': 'sum', 'valor': 'sum'}).reset_index()
     df_agrupado['qntd'] = df_agrupado['qntd'].astype(int)
+
+    # ---- Dias atipicos (Log de Erro + vespera de feriado): removidos da serie ----
+    # Retirados ANTES de montar os lags, p/ nao contaminarem nem o alvo (y) nem as
+    # features de defasagem dos dias vizinhos.
+    def _bdays_from(_start, _n):
+        """Primeiros _n dias uteis (seg-sex, exclui feriado BR) a partir de _start (inclusive)."""
+        _out, _d = [], pd.Timestamp(_start).normalize()
+        while len(_out) < _n:
+            if _d.weekday() < 5 and not wd.is_holiday(_d.date(), country='BR'):
+                _out.append(_d)
+            _d += pd.Timedelta(days=1)
+        return _out
+
+    def _eh_vespera_feriado(_d):
+        """True se o proximo dia de calendario nao-fim-de-semana apos _d for feriado BR."""
+        _n = pd.Timestamp(_d).normalize() + pd.Timedelta(days=1)
+        while _n.weekday() >= 5:          # pula sabado/domingo
+            _n += pd.Timedelta(days=1)
+        return bool(wd.is_holiday(_n.date(), country='BR'))
+
+    DIAS_ERRO = set()
+    _log_erro_path = os.path.join(BASE_DIR, 'logs', 'Log_Erro.xlsx')
+    try:
+        _log_erro = pd.read_excel(_log_erro_path)
+        _log_erro['Data'] = pd.to_datetime(_log_erro['Data'], errors='coerce').dt.normalize()
+        _log_erro['Impacto/dias'] = pd.to_numeric(_log_erro['Impacto/dias'], errors='coerce').fillna(1).astype(int)
+        for _, _r in _log_erro.dropna(subset=['Data']).iterrows():
+            for _d in _bdays_from(_r['Data'], max(int(_r['Impacto/dias']), 1)):
+                DIAS_ERRO.add(_d)
+        print(f'Log_Erro: {len(_log_erro)} eventos | dias de impacto (uteis): {len(DIAS_ERRO)}')
+    except Exception as _e:
+        print(f'[Log_Erro indisponivel] {_e} -- serie sem remocao por erro operacional')
+
+    def _mask_atipicos(_datas):
+        _dn = pd.to_datetime(_datas).dt.normalize()
+        return _dn.isin(DIAS_ERRO) | _dn.map(_eh_vespera_feriado)
+
+    _m_at = _mask_atipicos(df_agrupado['data'])
+    print(f'[atipicos] removidos {int(_m_at.sum())} dias da serie (Log_Erro + vespera feriado)')
+    df_agrupado = df_agrupado[~_m_at].reset_index(drop=True)
+
+    # Features de defasagem calculadas JA sem os dias atipicos
     df_agrupado['dia_semana'] = df_agrupado['data'].dt.day_of_week
     df_agrupado['lag_0'] = df_agrupado['valor'].shift(1)
     df_agrupado['lag_1'] = df_agrupado['qntd'].shift(1)
@@ -123,6 +167,12 @@ if wd.is_workday(datetime.today(),country='BR'):
     plot_agrupado = plot[(plot['data'] <= data_referencia) & (plot['data'] >= data_min)]
     plot_agrupado = plot_agrupado.groupby('data').agg({'qntd': 'sum', 'valor': 'sum'}).reset_index()
     plot_agrupado['qntd'] = plot_agrupado['qntd'].astype(float)
+
+    # Remove dias atipicos do historico de lags (consistente com o treino);
+    # mantem a ancora (ultimo dia = data_referencia) p/ preservar a previsao do proximo dia
+    _anc = plot_agrupado['data'].max()
+    _m_at = _mask_atipicos(plot_agrupado['data']) & (plot_agrupado['data'] != _anc)
+    plot_agrupado = plot_agrupado[~_m_at].reset_index(drop=True)
 
     plot_agrupado['dia_semana'] = (plot_agrupado['data'] + pd.to_timedelta(dias, unit='d')).dt.day_of_week
     plot_agrupado['lag_0'] = plot_agrupado['valor']
