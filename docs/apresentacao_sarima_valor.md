@@ -1,26 +1,40 @@
 ---
+marp: true
+theme: default
+paginate: true
 tags:
   - modelo
   - previsao
   - valor
+  - quantidade
   - sarima
   - sarimax
   - intervencao
+  - cointegracao
   - apresentacao
 created: 2026-07-01
+updated: 2026-07-02
 author: Daniel Ramazzotte
 disciplina: Econometria e Análise de Intervenção
+style: |
+  blockquote {
+    border-left: 5px solid #1e3799; background: #eaf2ff;
+    padding: 10px 16px; border-radius: 4px; margin: 12px 0; color: #0a3d62;
+  }
+  blockquote strong { color: #0a3d62; }
+  section table { font-size: 16px; }
 ---
 
 <!-- _class: cover -->
 <!-- _paginate: false -->
 
-# Modelagem SARIMA/SARIMAX da série diária de Valor de Propostas
+# Modelagem SARIMA/SARIMAX das séries diárias de Valor **e** Quantidade de Propostas
 
 ## Econometria e Análise de Intervenção
 
 Séries temporais clássicas, análise de intervenção (Box–Tiao) e teste de cointegração
-aplicados às séries diárias de **valor** e **quantidade** de propostas (etapa 16).
+aplicados **em pé de igualdade** às séries diárias de **valor (R$)** e **quantidade** de
+propostas (etapa 16).
 
 **Daniel Ramazzotte** · Julho/2026
 
@@ -28,376 +42,328 @@ aplicados às séries diárias de **valor** e **quantidade** de propostas (etapa
 
 ## Agenda
 
-1. **Motivação** — por que um modelo branco de séries temporais
-2. **Metodologia** — variáveis, métodos e desenho de validação
-3. **Estimação** — ordem, coeficientes e interpretação
-4. **Análise de Intervenção** — dias atípicos (pulso × degrau)
-5. **Cointegração** — valor × quantidade
-6. **Adequação** — diagnóstico dos resíduos
-7. **Capacidade preditiva** — ranking walk-forward e demais modelos
-8. **Escolha do melhor modelo** e conclusões
+**Parte I — Metodologia**
+1. Construção da base
+2. Teste de cointegração (método)
+3. Análise de intervenção (método)
+4. Método experimental — validação walk-forward
+5. Métricas de comparação
+6. Covariáveis
+7. Modelos mensais (método)
+
+**Parte II — Resultados** → Cointegração · Intervenção · Ranking · Modelos escolhidos e
+adequação · Mensais
+
+**Parte III —** Interpretação · Conclusão · Discussão
 
 ---
 
 <!-- _class: section-divider -->
 
-## 1. Motivação
+## Parte I — Metodologia
 
-### Por que série temporal clássica, e não só AutoML?
-
----
-
-## Motivação
-
-O modelo em produção (**Pipeline TPOT / ML**) prevê bem, mas é uma **caixa-preta**: não diz
-*o quanto* a fila pesa, nem *como* a série se comporta ao longo do tempo. Para uma leitura
-econométrica, precisamos de um modelo **branco**.
-
-- **Interpretabilidade.** Cada termo (média móvel, sazonalidade, efeito da fila, efeito dos
-  dias de erro) vem com **coeficiente, erro-padrão e p-valor**.
-- **Estrutura temporal explícita.** Tendência (diferenciação `d=1`), choque do dia anterior
-  (MA), sazonalidade semanal (`m=5`) — o ML só capta isso de forma indireta via lags.
-- **Tratamento transparente dos dias atípicos.** Em vez de simplesmente descartá-los, usamos
-  um **modelo de intervenção** (Box–Tiao) que mede o efeito de cada evento.
-
-> [!important] Meta
-> Um *benchmark* clássico interpretável, competitivo com o melhor ML, que **explique** o que
-> move a série de valor.
+### Como as duas séries foram construídas, testadas e validadas
 
 ---
 
-## As duas séries — Valor e Quantidade
+## 1. Construção da base
 
-Agregação **diária** das propostas da etapa 16, apenas **dias úteis** (exclui sábados,
-domingos e feriados via `workadays`) → sazonalidade semanal regular `m = 5`.
+Agregação **diária** das propostas da etapa 16, apenas em **dias úteis** (exclui sábados,
+domingos e feriados nacionais via `workadays`) → sazonalidade semanal regular **`m = 5`**.
 
-- **Valor (R$):** valor monetário processado no dia — série-alvo principal.
-- **Quantidade:** nº de propostas analisadas no dia — série de apoio (e candidata à
-  cointegração com o valor).
-- Histórico completo: **~409 dias úteis** (08/11/2024 → 23/06/2026).
+| | **Valor (R$)** | **Quantidade** |
+|---|---|---|
+| Definição | valor monetário processado no dia | nº de propostas analisadas no dia |
+| Fonte | `crefaz.ft_proposta` (etapa 16) | `crefaz.ft_proposta` (etapa 16) |
+| Papel | série-alvo | série-alvo |
 
-![Série de valor com médias móveis de 5 e 20 dias; linhas verticais = dias de intervenção](img_sarima/valor_serie.png)
-
----
-
-<!-- _class: section-divider -->
-
-## 2. Metodologia
-
-### Variáveis, métodos e desenho de validação
+- **As duas séries têm o mesmo status:** cada uma recebe seleção de ordem, intervenção,
+  ranking e modelo recomendado próprios.
+- Histórico: **~410 dias úteis** (07/11/2024 → 01/07/2026).
+- Janela de avaliação walk-forward: **N = 209** (valor) e **N = 211** (quantidade).
 
 ---
 
-## Variáveis do modelo
+## As duas séries lado a lado
 
-| Papel | Valor | Quantidade |
-|-------|-------|------------|
-| **Endógena** `y_t` | valor diário (R$) | quantidade diária |
-| **Exógena D-1** | `fila_d1` — fila de pagamento de ontem (etapa 15) | `valor_d1` — valor de ontem |
-| **Dummies calendário** | dia-da-semana (`ter…sex`; 2ª = referência) | idem |
-| **Intervenção** | `pulso/degrau` dos dias especiais | idem |
+<div style="display:flex; gap:12px;">
+<img src="img_sarima/valor_serie.png" style="width:50%;">
+<img src="img_sarima/qtd_serie.png" style="width:50%;">
+</div>
 
-- A **exógena é sempre de D-1** (conhecida no momento da previsão → sem vazamento).
-- **Dummies de dia-da-semana** capturam o padrão semanal **pelo dia real**, não pela posição
-  `t-5` na grade (que desalinha quando um feriado some da série).
-- **Segunda-feira é a categoria de referência** (`drop_first`) para evitar colinearidade.
+Séries com médias móveis de 5 e 20 dias; linhas verticais = dias de intervenção. Ambas
+mostram **nível que passeia** (não-estacionário), **sazonalidade semanal** e **quedas
+pontuais** nos dias de erro operacional.
 
 ---
 
-## Métodos — em uma frase cada
-
-- **ARIMA(p,d,q).** Auto-regressivo + diferenciação + média móvel.
-- **`d = 1`.** A série é **I(1)** (não-estacionária em nível, estacionária na 1ª diferença,
-  confirmado por ADF/KPSS). Uma diferença remove a tendência/nível.
-- **MA(1) — `ma.L1`.** Corrige a previsão pelo **choque (erro) do dia anterior** →
-  suavização tipo média móvel exponencial.
-- **SARIMA — sazonal `m=5`.** Termo `ma.S.L5` capta o resíduo do padrão semanal.
-- **SARIMAX — o "X".** Acrescenta regressores exógenos (`fila_d1` + dummies).
-- **Intervenção (Box–Tiao).** Dummies de **pulso** ou **degrau** para os dias atípicos.
-
----
-
-## Análise clássica da série
+## Análise clássica — estacionariedade e ACF/PACF
 
 Antes de estimar: **estacionariedade** (ADF/KPSS), **autocorrelação** (ACF/PACF) e
-**decomposição** (STL, período 5).
+**decomposição** (STL, período 5) — feitas para **as duas séries**.
 
-![ACF/PACF em nível (decaimento lento → I(1)) e na 1ª diferença (corte abrupto → MA)](img_sarima/valor_acf.png)
+![ACF/PACF do valor: nível decai lentamente (I(1)); 1ª diferença com corte no lag 1 (MA)](img_sarima/valor_acf.png)
 
-- ACF em **nível decai lentamente** → não-estacionária → justifica `d=1`.
-- Na **1ª diferença**, ACF com pico negativo no lag 1 → assinatura de **MA(1)**.
+- ACF em **nível decai lentamente** (valor e qtd) → não-estacionária → justifica `d = 1`.
+- Na **1ª diferença**, pico negativo no lag 1 → assinatura de **MA(1)** em ambas.
 
 ---
 
 ## Decomposição STL (período = 5)
 
 Tendência suave de médio prazo + **sazonalidade semanal clara** + resíduo com *spikes* nos
-dias atípicos (que a intervenção vai tratar).
+dias atípicos (que a intervenção trata). Padrão **idêntico** nas duas séries.
 
 ![Decomposição STL do valor: tendência, sazonal semanal e resíduo](img_sarima/valor_stl.png)
 
 ---
 
-## Seleção de ordem — `pmdarima.auto_arima`
+## 2. Teste de cointegração — o método
 
-Busca *stepwise* por **AIC**, sazonalidade `m = 5`, escolhida **uma vez** por série
-(*fallback* fixo se a busca falhar).
+Cointegração testa-se nos **níveis**, não nas diferenças. O pré-requisito é que ambas as
+séries sejam **I(1)** (não-estacionárias em nível, estacionárias na 1ª diferença).
 
-| Série | Ordem selecionada | AIC (univariado) |
-|-------|-------------------|:----------------:|
-| **Valor** | `SARIMA(0,1,1)(0,0,1,5)` | 12.020,7 |
-| **Quantidade** | `SARIMA(0,1,1)(0,0,2,5)` | 5.901,3 |
+- **Pergunta econômica:** se valor e quantidade forem cointegrados com vetor `(1, −β)`, o
+  **ticket médio** (`valor / qtd`) seria estacionário → proporcionalidade estável no longo prazo.
+- **Testes aplicados:** Engle–Granger e Johansen (traço) sobre os níveis; ADF do ticket médio;
+  ADF com tendência (`ct`) para descartar *trend-stationarity*.
 
-- `(0,1,1)`: 1 diferença (I(1)) + **MA(1)** para o choque do dia anterior.
-- `(0,0,1,5)` / `(0,0,2,5)`: **MA sazonal** no lag 5 (semanal).
-- Mesma especificação é reajustada em **todos os folds** do walk-forward.
-
----
-
-## Validação — Walk-forward × ajuste "normal"
-
-O ponto que torna a comparação **honesta**: replicar a operação real (retreina todo dia,
-prevê o próximo).
-
-| | **Walk-forward** | **Normal (1 ajuste)** |
-|---|---|---|
-| Nº de ajustes | **N** (um por dia) | 1 |
-| Usa dados futuros p/ estimar? | **Não** (sem vazamento) | in-sample: sim; split: não |
-| O que mede | **Erro out-of-sample realista** | qualidade de ajuste / 1 ponto |
-| Custo | N× mais lento | barato |
-| Onde no estudo | ranking e correção de viés | seções de diagnóstico |
-
-> [!note]
-> O MAPE/RMSPE do **ranking** vem do walk-forward 1-passo — comparável de igual para igual
-> com a Pipeline Antiga (que no backup também é previsão diária de 1 passo).
+> **Por que importa:** decide se as duas séries devem ser modeladas **juntas** (VECM/ARDL)
+> ou **separadamente**. É o teste que legitima tratar valor e quantidade como problemas
+> independentes.
 
 ---
 
-## Dias removidos do ranking + correção de viés
+## 3. Análise de intervenção — o método (Box–Tiao)
 
-**Dias atípicos** (`Log_Erro` e vésperas) são **retirados do `datas_eval`**: o ranking
-pontua apenas **dias normais**, que são o alvo real.
-
-- Nesses dias normais as colunas de intervenção valem **0** → a intervenção **não** prevê o
-  dia do evento.
-- O ganho é **indireto**: as dummies **descontaminam o ajuste** — os coeficientes AR/MA são
-  estimados **limpos**, sem serem puxados pelos *spikes* → previsões melhores nos dias normais.
-
-**Correção de viés (`aplica_debias`).** Sobre a sequência walk-forward, corrige a próxima
-previsão pela **média dos erros passados** (janela 10 dias, `rolling + shift(1)` → sem
-vazamento). Quase zera o viés ao custo de ~0,3 p.p. de RMSPE.
-
----
-
-## Dummies de dia-da-semana — alinhamento
-
-Adicionadas na exógena (`dow_ter…dow_sex`, 2ª = referência), então usadas por **SARIMAX** e
-pelos ajustes de intervenção que recebem exógena.
-
-- Capturam o padrão semanal pelo **dia real**, robusto à ausência de feriados na grade.
-- Bônus: o efeito de cada intervenção passa a ser estimado **controlando o dia da semana**.
-- **SARIMA puro permanece univariado** (`exog=None`, só `m=5`) **por design**: assim o
-  ranking mostra diretamente **se as dummies ajudam** (SARIMA sem × SARIMAX com).
-
-> [!note]
-> No walk-forward a exógena é padronizada por z-score (reparametrização linear, previsão
-> idêntica). Com `MIN_TREINO≈25` (~5 semanas) todos os dias-da-semana aparecem em qualquer
-> janela → sem matriz singular.
-
----
-
-<!-- _class: section-divider -->
-
-## 3. Estimação
-
-### Coeficientes e interpretação (SARIMAX — Valor)
-
----
-
-## Coeficientes do SARIMAX — Valor
-
-Ajuste in-sample no histórico completo, `fila_d1` padronizada (z-score) + dummy de pulso:
-
-```
-              SARIMAX(0,1,1)x(0,0,1,5)  —  N=404  —  AIC = 11.631
-================================================================================
-              coef        std err     z      P>|z|    interpretação
---------------------------------------------------------------------------------
-fila_d1_z   +1,027e+05   2,34e+04   +4,38   0,000   efeito da fila D-1 (padronizada)
-pulso_erro  -4,545e+05   9,30e+04   -4,89   0,000   efeito dos dias de erro
-ma.L1          -0,7829     0,034   -22,87   0,000   choque MA(1) não-sazonal
-ma.S.L5        -0,0862     0,046    -1,87   0,062   sazonal semanal (limítrofe)
-================================================================================
-```
-
-- **`fila_d1` (+R$102,7 mil/desvio, p<0,001):** +1 dp de fila (~54 propostas) → **~R$102,7 mil**
-  a mais no valor do dia (~R$1,9 mil por proposta a mais na fila). Fila é *driver* antecedente.
-- **`pulso_erro` (−R$454,5 mil, p<0,001):** dias de erro derrubam o valor ~**10%** da média
-  diária → valida tratá-los como **intervenção**, não ruído.
-- **`ma.L1` (−0,78):** principal mecanismo preditivo — corrige o nível por **78% do choque de ontem**.
-- **`ma.S.L5` (−0,086, p≈0,06):** resíduo semanal fraco (a maior parte já foi absorvida).
-
----
-
-## AIC — os regressores ajudam?
-
-| Especificação | AIC |
-|---------------|:---:|
-| SARIMA univariado (sem exógena/intervenção) | 11.640 |
-| **SARIMAX** (`fila_d1` + `pulso_erro`) | **11.631** |
-
-Os dois regressores **reduzem o AIC** e ambos são **altamente significativos (p < 0,001)** —
-evidência de que a fila D-1 e a intervenção agregam informação genuína, não só grau de
-liberdade.
-
----
-
-<!-- _class: section-divider -->
-
-## 4. Análise de Intervenção
-
-### Dias atípicos: pulso × degrau (Box–Tiao)
-
----
-
-## Modelo de intervenção — pulso × degrau
-
-Para cada **dia especial** (eventos do `Log_Erro` operacional + vésperas de feriado)
-ajustamos SARIMA/SARIMAX com **regressores de intervenção** e classificamos o efeito:
+Para cada **dia especial** (eventos do `Log_Erro` operacional + vésperas de feriado) ajustamos
+o SARIMA/SARIMAX com **regressores de intervenção** e classificamos o efeito:
 
 - **Pulso (impulso):** efeito **transitório**, restrito ao(s) dia(s) do evento
   (dummy = 1 no evento, 0 nos demais). Típico de **paradas operacionais**.
 - **Degrau (step):** **mudança de nível permanente** a partir do evento
   (dummy = 0 antes, 1 do evento em diante). Típico de **mudanças estruturais**.
 
-**Escolha:** por evento ajustamos os dois modelos e ficamos com o de coeficiente
+**Escolha por evento:** ajustam-se os dois modelos e fica-se com o de coeficiente
 **significativo (p < 0,05)** e menor **AIC**. Aqui a série **mantém** os dias especiais —
 é necessário para estimar o efeito.
 
----
-
-## Efeito estimado por evento — Valor
-
-18 eventos classificados. Predominam efeitos **negativos** (paradas/erros derrubam o valor);
-Carnaval aparece como **positivo** (acúmulo pós-feriado).
-
-![Efeito estimado por evento (abrupto × gradual), série de valor / SARIMAX](img_sarima/interv_efeito.png)
+> **Papel no ranking:** a intervenção **descontamina o ajuste** — os coeficientes AR/MA são
+> estimados sem serem puxados pelos *spikes*. Nos dias avaliados (normais) as dummies valem 0.
 
 ---
 
-## A intervenção limpa o ajuste — resíduo pré × pós
+## 4. Método experimental — walk-forward × ajuste normal
 
-Comparando o SARIMA **sem** e **com** as dummies de intervenção (valor, N=409):
+Replica a operação real: **retreina todo dia, prevê o próximo**. Aplicado igualmente às duas séries.
 
-| Modelo | AIC | BIC | DP resíduo | MAE resíduo | LB p(10) | LB p(20) |
-|--------|:---:|:---:|:----------:|:-----------:|:--------:|:--------:|
-| PRÉ (sem intervenção) | 5.728 | 5.744 | 359,4 | 246,6 | **0,01** | 0,00 |
-| **PÓS (com intervenção)** | **5.641** | **5.669** | **327,2** | **230,9** | **0,36** | 0,18 |
+| | **Walk-forward** | **Normal (1 ajuste)** |
+|---|---|---|
+| Nº de ajustes | **N** (um por dia) | 1 |
+| Usa dados futuros p/ estimar? | **Não** (sem vazamento) | in-sample: sim |
+| O que mede | **Erro out-of-sample realista** | qualidade de ajuste |
+| Onde no estudo | ranking e correção de viés | diagnóstico |
 
-- **AIC cai** (5.728 → 5.641), **desvio do resíduo cai** (359 → 327).
-- **Ljung-Box deixa de rejeitar** (p 0,01 → 0,36): a autocorrelação residual que os *spikes*
-  causavam **desaparece** → dinâmica de curto prazo bem capturada.
-
----
-
-## Honestidade metodológica
-
-> [!important] A sutileza
-> A intervenção entra no ranking como **descontaminação do ajuste**, não como predição do
-> dia do evento. Nos dias avaliados (normais) as dummies valem 0; o benefício é que os
-> parâmetros AR/MA saem estimados sem serem puxados pelos *spikes* passados.
-
-**Um look-ahead pequeno e estrutural:** a **classificação da forma** (abrupto × gradual) é
-calculada **uma vez na série inteira**; já os **coeficientes** são reestimados a cada dia no
-walk-forward (`iloc[:loc]`, só o passado). A maior parte da informação é **calendário**
-(vésperas e dias de log são conhecidos de antemão), então reclassificar dentro do
-walk-forward custaria caro e mudaria pouco.
+- **Dias atípicos** (`Log_Erro` + vésperas) saem do `datas_eval`: o ranking pontua só **dias normais**.
+- **Correção de viés** (`aplica_debias`): corrige a próxima previsão pela média dos erros
+  passados (janela 10 dias, `rolling + shift(1)` → sem vazamento).
+- Comparação **maçã-com-maçã** com a **Pipeline Antiga** (backup), também previsão diária de 1 passo.
 
 ---
 
-<!-- _class: section-divider -->
+## 5. Métricas de comparação
 
-## 5. Cointegração — Valor × Quantidade
+O ranking é ordenado por **RMSPE** (penaliza erros grandes); as demais métricas dão o retrato completo.
 
-### Existe equilíbrio de longo prazo entre as duas séries?
+| Métrica | O que mede |
+|---|---|
+| **MAPE médio %** | erro percentual absoluto médio (dia típico) |
+| **RMSPE %** | raiz do erro quadrático percentual — **chave do ranking** (pune outliers) |
+| **R²** | fração da variância explicada |
+| **Viés (MPE)** | erro médio com sinal → super/subestimação sistemática |
+| **Mediana %** | robusta a caudas |
+| **% < 5% / < 10%** | acurácia operacional (dias dentro da meta) |
 
----
-
-## Cointegração — a pergunta e o pré-requisito
-
-Cointegração testa-se nos **níveis**, não nas diferenças. O pré-requisito é que ambas sejam
-**I(1)** — o que a diferenciação já confirmou.
-
-- **Ambas I(1):** ADF em nível não rejeita raiz unitária (valor p=0,86; qtd p=0,54); na 1ª
-  diferença p=0,00.
-- **Interpretação econômica:** se cointegradas com vetor `(1, −β)`, o **ticket médio**
-  (`valor/qtd`) seria estacionário → proporcionalidade estável.
-- **Testes:** Engle-Granger e Johansen sobre os níveis; ADF do ticket médio.
+> **Meta de qualidade:** MAPE ≤ 5% (ideal) · ≤ 10% (aceitável), idêntica para valor e quantidade.
 
 ---
 
-## Resultado — não há cointegração confiável
+## 6. Covariáveis
 
-| Teste | Estatística | Resultado |
-|-------|-------------|-----------|
-| **Engle-Granger** | p = 0,96 | **NÃO rejeita** H0 → sem cointegração |
-| Johansen (traço, sem tendência) | 1 relação | ambíguo |
-| Johansen (com tendência) | 2 relações | vs. ADF-`ct` indica **trend-stationary** |
-| **ADF do ticket médio** | p = 0,86 | erro de equilíbrio **não-estacionário** |
+A exógena é sempre de **D-1** (conhecida no momento da previsão → **sem vazamento**).
 
-![Níveis padronizados e resíduo de equilíbrio (valor − 2234·qtd + const) com deriva persistente](img_sarima/coint.png)
+| Papel | **Valor** | **Quantidade** |
+|---|---|---|
+| Endógena `y_t` | valor diário (R$) | quantidade diária |
+| **Exógena D-1** | `fila_d1` — fila de pagamento de ontem (etapa 15) | `valor_d1` — valor de ontem |
+| Dummies calendário | dia-da-semana (`ter…sex`; 2ª = ref.) | idem |
+| Intervenção | pulso/degrau dos dias especiais | idem |
 
-> [!warning] Conclusão
-> O erro de equilíbrio **deriva** (não volta à média) → **modelar as séries separadamente**.
-> Como as ordens ficam mistas I(0)/I(1) para a qtd, o *follow-up* correto seria o **teste de
-> limites ARDL** (Pesaran-Shin-Smith), não VECM.
+- **Dummies de dia-da-semana** capturam o padrão semanal pelo **dia real**, robusto à ausência
+  de feriados na grade (que desalinharia o lag `t-5`).
+- **SARIMA puro permanece univariado** por design → o ranking mostra **diretamente se a exógena
+  ajuda** (SARIMA sem × SARIMAX com). *Spoiler:* ajuda no valor, não na quantidade.
+
+---
+
+## 7. Modelos mensais — o método
+
+Além do diário, avaliamos o **total do mês** de cada série por dois caminhos:
+
+- **Nowcast:** realizado acumulado no mês + previsão SARIMAX dos dias úteis restantes →
+  atualiza a estimativa do total dia a dia.
+- **Modelo mensal supervisionado:** tabela com lags mensais + calendário (`n_uteis`, `mm3`,
+  sazonais), janela expansível sem vazamento, comparando Naive, Média-Útil MM3, Ridge,
+  RandomForest, Linear, Sazonal e SARIMA agregado.
+
+> **Objetivo:** verificar se o esforço diário se traduz em bom total mensal, e qual é a
+> referência mais simples que ninguém deveria perder.
 
 ---
 
 <!-- _class: section-divider -->
 
-## 6. Adequação
+## Parte II — Resultados
 
-### Diagnóstico do ajuste (resíduos)
-
----
-
-## Diagnóstico dos resíduos — SARIMAX Valor
-
-![plot_diagnostics: resíduo padronizado, histograma vs N(0,1), Q-Q e correlograma](img_sarima/valor_diagnostico.png)
-
-- **Autocorrelação:** correlograma dentro das bandas; Ljung-Box **não rejeita** (Prob(Q)≈0,67)
-  → **curto prazo bem modelado**.
-- **Ressalvas:** **heterocedasticidade** (Prob(H)≈0,00) e **caudas pesadas/assimetria**
-  (Jarque-Bera signif., curtose≈8,5) — erros maiores em dias atípicos.
-- Matriz de covariância quase singular (`σ²` grande) → ler os **erros-padrão de σ² com
-  cautela**; a significância de `fila_d1`/`pulso_erro` (z≈4–5) é robusta.
-
-Isso **justifica** a intervenção (trata os *spikes*) e a **correção de viés** por cima.
+### Cointegração · Intervenção · Ranking · Modelos escolhidos · Mensais
 
 ---
 
-<!-- _class: section-divider -->
+## Resultado — Cointegração (não há cointegração confiável)
 
-## 7. Capacidade preditiva
+| Teste | Valor | Quantidade | Leitura |
+|---|---|---|---|
+| ADF nível | p = 0,848 | p = 0,529 | ambas **I(1)** |
+| ADF 1ª diferença | p = 0,000 | p = 0,000 | estacionárias diferenciadas |
+| **Engle–Granger** (conjunto) | \-\- | p = **0,962** | **NÃO rejeita** → sem cointegração |
+| ADF do ticket médio | \-\- | p = 0,841 | erro de equilíbrio **não-estacionário** |
 
-### Ranking walk-forward 1-passo
+Relação de longo prazo estimada: `valor = −1.568.875 + 2.229,4 · qtd` (β ≈ ticket médio).
+Johansen dá 1 relação (sem tendência) e 2 (com tendência), mas o ADF-`ct` (valor p=0,0007;
+qtd p=0,0002) indica **trend-stationarity** — não cointegração genuína.
+
+> **Conclusão:** o erro de equilíbrio **deriva** (não volta à média) → **modelar as séries
+> separadamente**. Como as ordens ficam mistas I(0)/I(1), o *follow-up* correto é o **teste de
+> limites ARDL** (Pesaran–Shin–Smith), não VECM.
+
+![Níveis padronizados e resíduo de equilíbrio com deriva persistente](img_sarima/coint.png)
 
 ---
 
-## Ranking — Valor (N = 210, ordenado por RMSPE)
+## Resultado — Intervenção: efeito por evento
 
-| Modelo | MAPE % | RMSPE % | R² | \|Viés\| (R$) | Mediana % |
-|--------|:------:|:-------:|:--:|:-------------:|:---------:|
-| **SARIMAX** | 7,34 | **9,22** | **0,75** | 11.924 | 6,15 |
-| Pipeline Antiga em Produção | **7,21** | 9,55 | 0,74 | 28.974 | 5,32 |
-| SARIMA (univariado) | 7,57 | 9,55 | 0,75 | 25.049 | 6,45 |
-| SARIMAX (corrigido) | 7,61 | 9,73 | 0,73 | 5.631 | 6,25 |
-| SARIMA (corrigido) | 7,89 | 10,03 | 0,72 | 3.941 | 6,56 |
+**18 eventos** classificados em cada série (pulso × degrau). Predominam efeitos **negativos**
+(paradas/erros derrubam a série); **Carnaval** aparece como **positivo** (acúmulo pós-feriado).
 
-- **SARIMAX tem o melhor RMSPE e o melhor R²** entre todos os candidatos.
+| Evento (exemplos) | Efeito no **Valor** | Efeito na **Quantidade** |
+|---|---|---|
+| Véspera Natal/Ano-Novo/Carnaval | −R$ 2,00 mi (abrupto) | −922 (abrupto) |
+| Microsoft (29/10/2025) | −R$ 2,82 mi (abrupto) | −1.413 (abrupto) |
+| CrefazOn-Cobrança (03/07/2025) | −R$ 1,28 mi (abrupto) | −705 (abrupto) |
+| Carnaval (05/03/2025) | +R$ 1,77 mi (gradual) | +763 (abrupto) |
+
+Classificação: **Valor** → 8 gradual, 5 abrupto, 5 n.s. (13 regressores) · **Quantidade** →
+7 abrupto, 7 gradual, 4 n.s. (14 regressores).
+
+![Efeito estimado por evento (abrupto × gradual) — série de valor / SARIMAX](img_sarima/interv_efeito.png)
+
+---
+
+## Resultado — a intervenção limpa o ajuste (pré × pós)
+
+Comparando o SARIMA **sem** e **com** as dummies de intervenção (N = 410):
+
+| Série | | AIC | DP resíduo | MAE resíduo | Ljung-Box p(10) |
+|---|---|:---:|:---:|:---:|:---:|
+| **Valor** | pré | 11.831,6 | R$ 620,0 k | R$ 434,2 k | **0,02** ❌ |
+| | **pós** | **11.745,9** | **R$ 550,5 k** | **R$ 395,3 k** | **0,40** ✅ |
+| **Quantidade** | pré | 5.742,2 | 359,1 | 246,4 | **0,01** ❌ |
+| | **pós** | **5.654,3** | **326,9** | **230,7** | **0,38** ✅ |
+
+- **AIC e desvio do resíduo caem** nas duas séries.
+- **Ljung-Box deixa de rejeitar** (p sobe de ~0,01 para ~0,4): a autocorrelação residual que os
+  *spikes* causavam **desaparece** → dinâmica de curto prazo bem capturada.
+
+---
+
+## Resultado — Estimação (coeficientes verificados)
+
+Ajuste in-sample no histórico completo (N = 410), exógena padronizada (z-score):
+
+| Coeficiente | **Valor** `SARIMAX(0,1,1)(0,0,1,5)` | **Quantidade** `SARIMAX(0,1,1)(0,0,2,5)` |
+|---|---|---|
+| **Exógena D-1** | `fila_d1` **+96,8 mil / dp** · p < 0,001 ✅ | `valor_d1` **−14,4** · p = 0,61 ❌ |
+| `ma.L1` (choque de ontem) | −0,784 · p < 0,001 | −0,794 · p < 0,001 |
+| `ma.S.L5` (semanal) | −0,111 · p = 0,019 | −0,128 · p = 0,009 |
+| `ma.S.L10` | — | −0,087 · p = 0,131 |
+| AIC (com exógena) | 11.827,5 | 5.744,6 |
+
+> **O achado central, com significância estatística:** a **fila do dia anterior** é *driver*
+> **forte e positivo** do valor (p < 0,001), mas o **valor de ontem NÃO ajuda** a prever a
+> quantidade (p = 0,61). É exatamente por isso que o vencedor de cada série é diferente.
+
+---
+
+## Resultado — Ranking Valor (N = 209, por RMSPE)
+
+| Modelo | MAPE % | RMSPE % | R² | Viés (R$) | Mediana % |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **SARIMAX** | 7,32 | **9,21** | **0,753** | +9.651 | 6,02 |
+| SARIMA (univariado) | 7,56 | 9,55 | 0,748 | −27.479 | 6,42 |
+| Pipeline Antiga em Produção | **7,23** | 9,57 | 0,745 | +28.438 | 5,35 |
+| SARIMAX (corrigido) | 7,57 | 9,71 | 0,733 | +5.655 | 6,14 |
+| SARIMA (corrigido) | 7,86 | 10,02 | 0,722 | +3.958 | 6,51 |
+| Log-retorno | 8,27 | 10,97 | 0,610 | +113.506 | 6,72 |
+
+- **SARIMAX tem o melhor RMSPE e o melhor R²** de todos os candidatos.
 - Fica ~0,1 p.p. atrás da Antiga só no **MAPE médio** — mas a Antiga é **retreinada quase
-  diariamente**; o SARIMAX usa uma única especificação.
+  diariamente**; o SARIMAX usa **uma única especificação**. A exógena `fila_d1` **agregou**.
+
+---
+
+## Resultado — Ranking Quantidade (N = 211, por RMSPE)
+
+| Modelo | MAPE % | RMSPE % | R² | Viés | Mediana % |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **SARIMA (univariado)** | **7,20** | **9,08** | **0,414** | +15,6 | 6,44 |
+| SARIMA (corrigido) | 7,62 | 9,69 | 0,351 | +5,2 | 6,05 |
+| SARIMAX | 7,31 | 9,79 | 0,319 | +1,0 | 5,52 |
+| Pipeline Antiga em Produção | 7,89 | 9,88 | 0,313 | +40,5 | 6,42 |
+| SARIMAX (corrigido) | 7,88 | 10,52 | 0,228 | +4,4 | 6,35 |
+| Log-retorno | 8,10 | 10,86 | 0,089 | +97,8 | 6,90 |
+
+> **Contraste decisivo:** para a **quantidade**, o **SARIMA univariado vence** — a exógena
+> `valor_d1` **piora** o RMSPE. O padrão semanal `m = 5` já basta. Confirma o valor de deixar
+> SARIMA e SARIMAX lado a lado no ranking.
+
+---
+
+## Resultado — Modelos escolhidos × Pipeline (capacidade preditiva)
+
+Da função `comparar_modelo` (histórico completo), o modelo recomendado de cada série **bate a
+Pipeline Antiga** onde importa:
+
+| | Vencedor | Antiga | | Vencedor | Antiga |
+|---|:---:|:---:|---|:---:|:---:|
+| | **Valor — SARIMAX** | | | **Qtd — SARIMA** | |
+| RMSPE % | **9,21** | 9,57 | | **9,08** | 9,88 |
+| R² | **0,753** | 0,745 | | **0,414** | 0,313 |
+| Dias < 10% | 153/209 | 154/209 | | **163/211** | 152/211 |
+| Erro máx. % | **30,6** | 39,5 | | **30,5** | 34,1 |
+
+**Recorte recente (janeiro em diante):** a vantagem **cresce** — Valor SARIMAX 8,66% vs Antiga
+10,22% de RMSPE; Qtd SARIMA 8,67% vs 9,35%. Os modelos brancos são **mais estáveis** no período recente.
+
+---
+
+## Adequação e predição — diagnóstico dos resíduos
+
+![plot_diagnostics do SARIMAX-Valor: resíduo padronizado, histograma vs N(0,1), Q-Q e correlograma](img_sarima/valor_diagnostico.png)
+
+- **Autocorrelação:** correlograma dentro das bandas; Ljung-Box **não rejeita** → curto prazo
+  bem modelado (**vale para as duas séries**).
+- **Ressalvas (idem qtd):** **heterocedasticidade** e **caudas pesadas/assimetria** (Jarque-Bera
+  significativo) — erros maiores nos dias atípicos. Justifica a intervenção + correção de viés.
 
 ---
 
@@ -405,79 +371,86 @@ Isso **justifica** a intervenção (trata os *spikes*) e a **correção de viés
 
 ![SARIMAX × Realizado × Pipeline Antiga ao longo de todo o período de avaliação](img_sarima/valor_pred_real.png)
 
-O SARIMAX acompanha bem o nível e a sazonalidade; os maiores erros concentram-se nos
-*saltos* pós-atípicos (justamente onde a Antiga também erra).
+O SARIMAX acompanha bem nível e sazonalidade; os maiores erros concentram-se nos *saltos*
+pós-atípicos (onde a Antiga também erra). A curva da quantidade (SARIMA) tem comportamento
+análogo.
 
 ---
 
-## Ranking — Quantidade (N = 262)
+## Resultado — Modelos mensais
 
-| Modelo | MAPE % | RMSPE % | R² | Mediana % |
-|--------|:------:|:-------:|:--:|:---------:|
-| **SARIMA (univariado)** | **7,38** | **9,22** | **0,47** | 6,50 |
-| SARIMA (corrigido) | 7,69 | 9,73 | 0,41 | 6,32 |
-| SARIMAX | 7,64 | 10,01 | 0,38 | 6,01 |
-| Pipeline Antiga em Produção | 8,01 | 10,23 | 0,36 | 6,38 |
-| SARIMAX (corrigido) | 8,07 | 10,54 | 0,31 | 6,42 |
+Ranking do **total do mês** (10 meses avaliados, ordenado por RMSPE):
 
-> [!warning] Contraste importante
-> Para a **quantidade**, o **SARIMA univariado vence** — a exógena `valor_d1` **não ajuda**
-> (piora RMSPE). O padrão semanal `m=5` já basta. Confirma o valor de deixar SARIMA e SARIMAX
-> lado a lado no ranking.
+| | **Valor** | | **Quantidade** | |
+|---|:---:|:---:|:---:|:---:|
+| Modelo | MAPE % | RMSPE % | MAPE % | RMSPE % |
+| **Naive (mês-1)** | **3,54** | **4,66** | **2,94** | **3,64** |
+| Média-Útil MM3 | 6,17 | 6,93 | 3,28 | 4,06 |
+| Ridge | 8,50 | 10,28 | 6,39 | 8,17 |
+| SARIMA (agregado) | 10,78 | 12,60 | 9,65 | 10,27 |
 
----
+> **Achado:** para o **total mensal**, a **persistência simples (mês anterior)** domina — o
+> SARIMA diário agregado **não** é competitivo nessa granularidade. O **nowcast** é a ferramenta
+> certa de acompanhamento: converge para o realizado conforme o mês avança.
 
-## Outros modelos testados
-
-| Modelo | O que é | Resultado |
-|--------|---------|-----------|
-| **ARDL (bounds test)** | Relação de longo prazo com ordens mistas I(0)/I(1) | *follow-up* da cointegração; não superou o SARIMAX |
-| **Log-retorno** | Modela `r_t = ln(y_t/y_{t-1})`, estabiliza variância | competitivo, mas atrás do SARIMAX |
-| **Nowcast mensal** | Realizado acumulado + previsão dos dias restantes | converge para o total real ao longo do mês |
-| **SARIMAX mensal** | Uma previsão do total do mês antes de ele começar | linha de referência |
-
-![Nowcast do total do mês (out/2025): converge para o realizado conforme o mês avança](img_sarima/nowcast_valor.png)
+![Nowcast do total do mês (valor): converge para o realizado conforme o mês avança](img_sarima/nowcast_valor.png)
 
 ---
 
 <!-- _class: section-divider -->
 
-## 8. Escolha do melhor modelo
+## Parte III — Interpretação, Conclusão e Discussão
 
 ---
 
-## Recomendação
+## Interpretação
 
-> [!success] Valor → SARIMAX `(0,1,1)(0,0,1,5)` + `fila_d1` + `pulso_erro`
-> Melhor **RMSPE (9,22%)** e **R² (0,75)** do estudo; MAPE (7,34%) praticamente empatado com
-> a Pipeline Antiga, com a vantagem decisiva de ser **interpretável**.
+**O que os modelos revelam, com significância estatística:**
 
-> [!success] Quantidade → SARIMA univariado `(0,1,1)(0,0,2,5)`
-> A exógena não ajuda; o modelo univariado com sazonalidade semanal é o melhor e o mais
-> parcimonioso (MAPE 7,38%, RMSPE 9,22%).
-
-**O SARIMAX de valor mostra, com significância estatística, que:**
-1. a **fila do dia anterior** é *driver* positivo e forte (+R$1,9 mil/proposta);
-2. os **dias de erro operacional** derrubam o valor em ~10% e merecem intervenção;
-3. a dinâmica diária é bem descrita por **suavização MA(1)** com leve componente semanal.
+1. **Valor é *puxado* pela fila.** `fila_d1` é *driver* positivo e forte (+R$ 96,8 mil por
+   desvio-padrão de fila, p < 0,001): a fila de pagamento de ontem antecipa o valor de hoje.
+2. **Quantidade é *autossuficiente*.** O valor de ontem não informa a quantidade de hoje
+   (p = 0,61); o que a governa é a **estrutura própria** (MA(1) + sazonalidade semanal).
+3. **Dias de erro operacional têm efeito real e mensurável** (véspera −R$ 2,0 mi / −922
+   propostas; Microsoft −R$ 2,8 mi / −1.413) → merecem **intervenção**, não descarte cego.
+4. **Ambas as dinâmicas diárias** são bem descritas por **suavização MA(1)** (−0,78/−0,79) com
+   leve componente semanal.
+5. **Valor e quantidade NÃO compartilham equilíbrio de longo prazo** → modelagem separada é a
+   escolha correta (ticket médio não-estacionário).
 
 ---
 
-## Conclusões, limitações e próximos passos
+## Conclusão
 
-**Conclusões**
-- Modelo **branco** competitivo com o melhor ML e **superior no RMSPE** para valor.
-- A **análise de intervenção** melhora o ajuste (AIC↓, Ljung-Box deixa de rejeitar).
+> **Valor → SARIMAX `(0,1,1)(0,0,1,5)` + `fila_d1` + intervenção.**
+> Melhor **RMSPE (9,21%)** e **R² (0,753)** do estudo; MAPE praticamente empatado com a
+> Pipeline Antiga, com a vantagem decisiva de ser **interpretável**.
+
+> **Quantidade → SARIMA univariado `(0,1,1)(0,0,2,5)` + intervenção.**
+> A exógena não ajuda; o modelo univariado com sazonalidade semanal é o **melhor e o mais
+> parcimonioso** (MAPE 7,20%, RMSPE 9,08%, R² 0,414) — e supera a Antiga em todas as métricas.
+
+- Modelos **brancos** competitivos com o melhor ML e **superiores no RMSPE** nas duas séries.
+- A **análise de intervenção** melhora o ajuste (AIC↓, Ljung-Box deixa de rejeitar) em ambas.
 - **Sem cointegração** valor × qtd → séries modeladas separadamente.
 
+---
+
+## Discussão — limitações e próximos passos
+
 **Limitações**
-- Heterocedasticidade e caudas pesadas nos resíduos (mitigadas por intervenção + debias).
-- Classificação da forma da intervenção com pequeno look-ahead estrutural (calendário).
-- Não substitui a Pipeline Antiga em produção (retreinada quase diariamente).
+- **Heterocedasticidade e caudas pesadas** nos resíduos das duas séries (mitigadas por
+  intervenção + debias, mas presentes) → intervalos de confiança otimistas nos extremos.
+- **Classificação da forma** da intervenção (abrupto × gradual) tem pequeno *look-ahead*
+  estrutural: é feita uma vez na série inteira (a maior parte é **calendário**, conhecido de
+  antemão); os **coeficientes**, porém, são reestimados a cada dia no walk-forward.
+- Modelos **mensais** mostram que, no total do mês, persistência simples vence — o SARIMA diário
+  **não** é a ferramenta certa para essa granularidade.
 
 **Próximos passos**
-- Injetar intervenções (Carnaval/vésperas) como exógena futura determinística no nowcast.
-- Avaliar reclassificação da intervenção dentro do walk-forward (rigor total).
+- **ARDL bounds test** como *follow-up* formal da cointegração (ordens mistas I(0)/I(1)).
+- Injetar intervenções (Carnaval/vésperas) como **exógena futura determinística** no nowcast.
+- Avaliar **reclassificação da intervenção dentro do walk-forward** (rigor total).
 
 ---
 
