@@ -13,7 +13,7 @@ tags:
   - cointegracao
   - apresentacao
 created: 2026-07-01
-updated: 2026-07-02
+updated: 2026-07-06
 author: Daniel Ramazzotte
 disciplina: Econometria e Análise de Intervenção
 style: |
@@ -42,31 +42,67 @@ propostas (etapa 16).
 
 ## Agenda
 
-**Parte I — Metodologia**
-1. Construção da base
-2. Teste de cointegração (método)
-3. Análise de intervenção (método)
-4. Método experimental — validação walk-forward
-5. Métricas de comparação
-6. Covariáveis
-7. Modelos mensais (método)
+**Introdução** — motivação, dados e construção da base
 
-**Parte II — Resultados** → Cointegração · Intervenção · Ranking · Modelos escolhidos e
-adequação · Mensais
+**Bloco 1 — Cointegração** (valor × quantidade têm equilíbrio de longo prazo?) → método + resultado
 
-**Parte III —** Interpretação · Conclusão · Discussão
+**Bloco 2 — Análise de intervenção** (Box–Tiao) → método + resultado
+
+**Bloco 3 — Estimação e Validação** (SARIMA/SARIMAX, walk-forward, ranking) → método + resultado
+
+**Bloco 4 — Modelos mensais** → método + resultado
+
+**Fechamento** — Interpretação · Conclusão · Discussão
 
 ---
 
 <!-- _class: section-divider -->
 
-## Parte I — Metodologia
+## Introdução
 
-### Como as duas séries foram construídas, testadas e validadas
+### Motivação, dados e construção da base
 
 ---
 
-## 1. Construção da base
+## Por que prever vendas diárias? (necessidade de negócio)
+
+A área de crédito precisa saber, **todo dia útil**, o que esperar do dia seguinte em duas
+frentes operacionais distintas:
+
+- **Quantidade** — quantas propostas chegarão para análise hoje? Dimensiona a **equipe/fila
+  de análise** (capacidade de atendimento, alocação de analistas).
+- **Valor (R$)** — quanto será processado em propostas hoje? Dimensiona **capital, caixa e
+  risco** (quanto a operação precisa ter disponível).
+
+Essas duas perguntas já são respondidas **hoje em produção**, por um sistema automatizado que
+vamos chamar, ao longo desta apresentação, de **"Pipeline em Produção"** (ou "Pipeline Antiga
+em Produção" quando comparado aos modelos novos deste estudo) — é a referência que qualquer
+modelo novo precisa **igualar ou superar** para ser adotado.
+
+> **O modelo atual, em uma frase:** um pipeline de **AutoML (TPOT)** — busca automatizada
+> entre milhares de combinações de features/algoritmos de ML, **retreinado quase
+> diariamente** para se manter competitivo. Potente, mas **caixa-preta**: não dá para ler,
+> a partir dele, "quanto a fila pesa" ou "quanto um erro operacional custa" na previsão.
+
+---
+
+## Motivação
+
+- **Pergunta do estudo:** um modelo econométrico **clássico** (SARIMA/SARIMAX), com
+  estrutura interpretável e **uma única especificação fixa** (não retreinada a cada dia),
+  consegue **igualar ou superar** a Pipeline em Produção nas duas séries que ela já prevê?
+- **Se sim, o que se ganha:** coeficientes com significância estatística (o que empurra a
+  série pra cima/baixo, e por quanto), tratamento **transparente** dos dias atípicos
+  (intervenção de Box–Tiao em vez de simplesmente descartá-los) e um modelo auditável.
+- **Escopo:** valor e quantidade tratados **em pé de igualdade** — as duas passam pelo
+  mesmo pipeline metodológico (cointegração → intervenção → walk-forward → ranking).
+
+> **Se o modelo branco vencer ou empatar:** ganha-se interpretabilidade sem abrir mão de
+> acurácia. Se perder: ao menos serve como *benchmark* diagnóstico do que move a série.
+
+---
+
+## Construção da base
 
 Agregação **diária** das propostas da etapa 16, apenas em **dias úteis** (exclui sábados,
 domingos e feriados nacionais via `workadays`) → sazonalidade semanal regular **`m = 5`**.
@@ -86,9 +122,9 @@ domingos e feriados nacionais via `workadays`) → sazonalidade semanal regular 
 
 ## As duas séries lado a lado
 
-<div style="display:flex; gap:12px;">
-<img src="img_sarima/valor_serie.png" style="width:50%;">
-<img src="img_sarima/qtd_serie.png" style="width:50%;">
+<div style="display:flex; flex-direction:column; gap:8px;">
+<img src="img_sarima/valor_serie.png" style="width:100%;">
+<img src="img_sarima/qtd_serie.png" style="width:100%;">
 </div>
 
 Séries com médias móveis de 5 e 20 dias; linhas verticais = dias de intervenção. Ambas
@@ -112,21 +148,43 @@ Antes de estimar: **estacionariedade** (ADF/KPSS), **autocorrelação** (ACF/PAC
 ## Decomposição STL (período = 5)
 
 Tendência suave de médio prazo + **sazonalidade semanal clara** + resíduo com *spikes* nos
-dias atípicos (que a intervenção trata). Padrão **idêntico** nas duas séries.
+dias atípicos (que a intervenção trata). Padrão **idêntico** nas duas séries (quantidade tem
+histórico mais curto: dado começa em mai/2025, vs nov/2024 do valor).
+
+---
 
 ![Decomposição STL do valor: tendência, sazonal semanal e resíduo](img_sarima/valor_stl.png)
 
 ---
 
-## 2. Teste de cointegração — o método
+![Decomposição STL da quantidade: tendência, sazonal semanal e resíduo](img_sarima/qtd_stl.png)
+
+---
+
+<!-- _class: section-divider -->
+
+## Bloco 1 — Cointegração
+
+### Valor e quantidade têm equilíbrio de longo prazo?
+
+---
+
+## Cointegração — o método
 
 Cointegração testa-se nos **níveis**, não nas diferenças. O pré-requisito é que ambas as
 séries sejam **I(1)** (não-estacionárias em nível, estacionárias na 1ª diferença).
 
 - **Pergunta econômica:** se valor e quantidade forem cointegrados com vetor `(1, −β)`, o
   **ticket médio** (`valor / qtd`) seria estacionário → proporcionalidade estável no longo prazo.
-- **Testes aplicados:** Engle–Granger e Johansen (traço) sobre os níveis; ADF do ticket médio;
-  ADF com tendência (`ct`) para descartar *trend-stationarity*.
+- **Testes aplicados:** Engle–Granger e Johansen (traço) sobre os níveis; seleção do lag do VAR
+  por critério de informação antes do Johansen (sensível ao lag); ADF do ticket médio; ADF com
+  tendência (`ct`) para descartar *trend-stationarity*.
+- **Ajuste de intervenção (pré-teste):** antes de qualquer teste, remove-se dos níveis o efeito
+  de **pulso** dos dias atípicos (`Log_Erro` + véspera Natal/Ano Novo/Carnaval) — outlier aditivo
+  via regressão em `[const, dummy_atípico]`, subtraindo o coeficiente do dummy (preserva
+  nível/tendência, só tira o choque pontual). Necessário porque o Johansen desta versão do
+  `statsmodels` não aceita exógena — sem isso, os choques pontuais (fora do equilíbrio de longo
+  prazo) inflam ou mascaram Engle–Granger e Johansen.
 
 > **Por que importa:** decide se as duas séries devem ser modeladas **juntas** (VECM/ARDL)
 > ou **separadamente**. É o teste que legitima tratar valor e quantidade como problemas
@@ -134,126 +192,131 @@ séries sejam **I(1)** (não-estacionárias em nível, estacionárias na 1ª dif
 
 ---
 
-## 3. Análise de intervenção — o método (Box–Tiao)
+## Resultado — Cointegração (não há cointegração confiável)
+
+**Ajuste prévio:** 37 dias atípicos (`Log_Erro` + véspera Natal/Ano Novo/Carnaval) tiveram o
+efeito de pulso removido dos níveis antes dos testes (outlier aditivo, coeficiente único
+para os 37 dias — nível/tendência preservados).
+
+| Teste | Valor | Quantidade | Leitura |
+|---|---|---|---|
+| ADF nível | p = 0,060 | p = **0,0005** | valor **I(1)** · qtd **I(0)** — ordens **mistas** |
+| ADF 1ª diferença | p = 0,000 | p = 0,000 | ambas estacionárias diferenciadas |
+| ADF-`ct` (com tendência) | p = 0,0004 | p = 0,0003 | ambas **trend-stationary** |
+| **Engle–Granger** (estat = −0,60) | p = **0,956** | | **NÃO rejeita** → sem cointegração |
+| ADF do ticket médio | p = 0,790 | | erro de equilíbrio **não-estacionário** |
+
+Relação de longo prazo estimada: `valor = −1.536.713 + 2.220,46 · qtd` (β ≈ ticket médio).
+
+- **Seleção de lag do VAR:** AIC → 12, BIC → 4 (usa-se `k_ar_diff = 11` no Johansen); teste de
+  whiteness dos resíduos não pôde ser calculado (nlags insuficiente para 12 lags no modelo).
+- **Johansen (sem tendência):** traço 13,83 (r≤0, crit5%=15,49) e 0,38 (r≤1, crit5%=3,84) →
+  **0 relações**. **Com tendência determinística:** traço 27,49 e 8,53 (crit5%=18,40/3,84) →
+  **2 relações**, mas coincide com a *trend-stationarity* do ADF-`ct` — não cointegração genuína.
+
+> **Conclusão:** o erro de equilíbrio **deriva** (não volta à média) → **modelar as séries
+> separadamente**. Como as ordens ficam mistas I(0)/I(1), o *follow-up* correto é o **teste de
+> limites ARDL** (Pesaran–Shin–Smith), não VECM.
+
+---
+
+## Resultado — Cointegração: gráficos
+
+![Níveis padronizados (ajustados p/ intervenção) e resíduo de cointegração Engle-Granger](img_sarima/coint.png)
+
+Painel superior: valor e quantidade em z-score, com os dias atípicos ajustados marcados em
+vermelho. Painel inferior: resíduo de Engle-Granger (`valor − relação de longo prazo`) —
+**deriva** ao longo do tempo em vez de oscilar em torno de zero, evidência visual da ausência
+de cointegração.
+
+---
+
+<!-- _class: section-divider -->
+
+## Bloco 2 — Análise de intervenção
+
+### Como os dias atípicos (erro operacional e feriados) são tratados
+
+---
+
+## Intervenção — o método (Box–Tiao)
 
 Para cada **dia especial** (eventos do `Log_Erro` operacional + vésperas de feriado) ajustamos
-o SARIMA/SARIMAX com **regressores de intervenção** e classificamos o efeito:
+o SARIMA/SARIMAX com **regressores de intervenção** e testamos até 3 formas de efeito
+(temporário — nenhuma delas é uma mudança de nível permanente):
 
-- **Pulso (impulso):** efeito **transitório**, restrito ao(s) dia(s) do evento
-  (dummy = 1 no evento, 0 nos demais). Típico de **paradas operacionais**.
-- **Degrau (step):** **mudança de nível permanente** a partir do evento
-  (dummy = 0 antes, 1 do evento em diante). Típico de **mudanças estruturais**.
+- **Abrupto:** efeito **constante** durante os dias de impacto, some abruptamente depois.
+  Única forma testável em eventos de **1 dia**.
+- **Gradual:** efeito **máximo no 1º dia**, decaindo linearmente até o fim da janela.
+  Só testado para janelas com **mais de 1 dia**.
+- **Rebote (bifásico):** **1º dia** com efeito de sinal **oposto** ao(s) dia(s) seguinte(s)
+  (ex.: erro derruba no dia 1, backlog processado no dia 2 empurra acima da média). Só
+  testado para `Log_Erro` com janela contígua **≥ 2 dias**.
 
-**Escolha por evento:** ajustam-se os dois modelos e fica-se com o de coeficiente
-**significativo (p < 0,05)** e menor **AIC**. Aqui a série **mantém** os dias especiais —
-é necessário para estimar o efeito.
+**Escolha por evento:** ajustam-se as formas aplicáveis e fica-se com a de coeficiente(s)
+**significativo(s) (p < 0,05)** e menor **AIC**; empate → abrupto. Aqui a série **mantém**
+os dias especiais — é necessário para estimar o efeito.
 
 > **Papel no ranking:** a intervenção **descontamina o ajuste** — os coeficientes AR/MA são
 > estimados sem serem puxados pelos *spikes*. Nos dias avaliados (normais) as dummies valem 0.
 
 ---
 
-## 4. Método experimental — walk-forward × ajuste normal
+## Intervenção — funções de transferência
 
-Replica a operação real: **retreina todo dia, prevê o próximo**. Aplicado igualmente às duas séries.
+**Abrupto** (efeito constante, retorno abrupto a 0):
 
-| | **Walk-forward** | **Normal (1 ajuste)** |
-|---|---|---|
-| Nº de ajustes | **N** (um por dia) | 1 |
-| Usa dados futuros p/ estimar? | **Não** (sem vazamento) | in-sample: sim |
-| O que mede | **Erro out-of-sample realista** | qualidade de ajuste |
-| Onde no estudo | ranking e correção de viés | diagnóstico |
+$$\text{efeito}(t) = \omega_0 \cdot I(t), \qquad I(t) = \begin{cases} 1 & \text{dias de impacto} \\ 0 & \text{fora} \end{cases}$$
 
-- **Dias atípicos** (`Log_Erro` + vésperas) saem do `datas_eval`: o ranking pontua só **dias normais**.
-- **Correção de viés** (`aplica_debias`): corrige a próxima previsão pela média dos erros
-  passados (janela 10 dias, `rolling + shift(1)` → sem vazamento).
-- Comparação **maçã-com-maçã** com a **Pipeline Antiga** (backup), também previsão diária de 1 passo.
+**Gradual** (decaimento linear ao longo da janela de impacto, posição 0-indexada):
 
----
+$$w(k) = \frac{n-k}{n}, \qquad k=0 \Rightarrow w=1, \qquad k=n-1 \Rightarrow w=\frac{1}{n}$$
 
-## 5. Métricas de comparação
+**Rebote / bifásico** (2 regressores livres, coeficientes independentes):
 
-O ranking é ordenado por **RMSPE** (penaliza erros grandes); as demais métricas dão o retrato completo.
+$$\text{efeito}(t) = \beta_1 \cdot \text{rebote\_dia1}(t) + \beta_2 \cdot \text{rebote\_pos}(t)$$
 
-| Métrica | O que mede |
-|---|---|
-| **MAPE médio %** | erro percentual absoluto médio (dia típico) |
-| **RMSPE %** | raiz do erro quadrático percentual — **chave do ranking** (pune outliers) |
-| **R²** | fração da variância explicada |
-| **Viés (MPE)** | erro médio com sinal → super/subestimação sistemática |
-| **Mediana %** | robusta a caudas |
-| **% < 5% / < 10%** | acurácia operacional (dias dentro da meta) |
-
-> **Meta de qualidade:** MAPE ≤ 5% (ideal) · ≤ 10% (aceitável), idêntica para valor e quantidade.
+Só aceito como classe se **β₁ e β₂ forem significativos E de sinais opostos**
+($\text{sign}(\beta_1) \neq \text{sign}(\beta_2)$) — captura o padrão "queda no dia 1,
+recuperação acima da média depois".
 
 ---
 
-## 6. Covariáveis
+## Log_Erro — registro completo (`logs/Log_Erro.xlsx`)
 
-A exógena é sempre de **D-1** (conhecida no momento da previsão → **sem vazamento**).
+Base de incidentes operacionais que alimenta a análise de intervenção (17 eventos; a véspera
+de Natal/Ano Novo/Carnaval entra à parte, via calendário):
 
-| Papel | **Valor** | **Quantidade** |
-|---|---|---|
-| Endógena `y_t` | valor diário (R$) | quantidade diária |
-| **Exógena D-1** | `fila_d1` — fila de pagamento de ontem (etapa 15) | `valor_d1` — valor de ontem |
-| Dummies calendário | dia-da-semana (`ter…sex`; 2ª = ref.) | idem |
-| Intervenção | pulso/degrau dos dias especiais | idem |
+| Data | Sistema em erro | Impacto (dias úteis) |
+|---|---|:---:|
+| 06/02/2025 | BrSCAM | 3 |
+| 26/02/2025 | CrefazOn | 2 |
+| 05/03/2025 | Carnaval | 2 |
+| 07/03/2025 | Bacen - Fila Pagamento | 2 |
+| 24/03/2025 | Enel - Mega | 3 |
+| 22/04/2025 | CrefazOn | 2 |
+| 22/05/2025 | Kamunda - Enel | 2 |
+| 12/06/2025 | Unico - CrefazOn | 2 |
+| 23/06/2025 | Code-Mega | 1 |
+| 27/06/2025 | CrefazOn | 1 |
+| 03/07/2025 | CrefazOn - Cobrança | 1 |
+| 13/10/2025 | CrefazOn | 2 |
+| 24/10/2025 | E-Consulter | 2 |
+| 29/10/2025 | Microsoft | 1 |
+| 04/12/2025 | Crivo | 1 |
+| 05/02/2026 | RBM | 2 |
+| 02/04/2026 | RBM | 2 |
 
-- **Dummies de dia-da-semana** capturam o padrão semanal pelo **dia real**, robusto à ausência
-  de feriados na grade (que desalinharia o lag `t-5`).
-- **SARIMA puro permanece univariado** por design → o ranking mostra **diretamente se a exógena
-  ajuda** (SARIMA sem × SARIMAX com). *Spoiler:* ajuda no valor, não na quantidade.
-
----
-
-## 7. Modelos mensais — o método
-
-Além do diário, avaliamos o **total do mês** de cada série por dois caminhos:
-
-- **Nowcast:** realizado acumulado no mês + previsão SARIMAX dos dias úteis restantes →
-  atualiza a estimativa do total dia a dia.
-- **Modelo mensal supervisionado:** tabela com lags mensais + calendário (`n_uteis`, `mm3`,
-  sazonais), janela expansível sem vazamento, comparando Naive, Média-Útil MM3, Ridge,
-  RandomForest, Linear, Sazonal e SARIMA agregado.
-
-> **Objetivo:** verificar se o esforço diário se traduz em bom total mensal, e qual é a
-> referência mais simples que ninguém deveria perder.
-
----
-
-<!-- _class: section-divider -->
-
-## Parte II — Resultados
-
-### Cointegração · Intervenção · Ranking · Modelos escolhidos · Mensais
-
----
-
-## Resultado — Cointegração (não há cointegração confiável)
-
-| Teste | Valor | Quantidade | Leitura |
-|---|---|---|---|
-| ADF nível | p = 0,848 | p = 0,529 | ambas **I(1)** |
-| ADF 1ª diferença | p = 0,000 | p = 0,000 | estacionárias diferenciadas |
-| **Engle–Granger** (conjunto) | \-\- | p = **0,962** | **NÃO rejeita** → sem cointegração |
-| ADF do ticket médio | \-\- | p = 0,841 | erro de equilíbrio **não-estacionário** |
-
-Relação de longo prazo estimada: `valor = −1.568.875 + 2.229,4 · qtd` (β ≈ ticket médio).
-Johansen dá 1 relação (sem tendência) e 2 (com tendência), mas o ADF-`ct` (valor p=0,0007;
-qtd p=0,0002) indica **trend-stationarity** — não cointegração genuína.
-
-> **Conclusão:** o erro de equilíbrio **deriva** (não volta à média) → **modelar as séries
-> separadamente**. Como as ordens ficam mistas I(0)/I(1), o *follow-up* correto é o **teste de
-> limites ARDL** (Pesaran–Shin–Smith), não VECM.
-
-![Níveis padronizados e resíduo de equilíbrio com deriva persistente](img_sarima/coint.png)
+`Impacto/dias` define a janela de dias úteis afetados a partir da `Data` — é o `n` usado nas
+fórmulas de gradual/rebote da forma anterior.
 
 ---
 
 ## Resultado — Intervenção: efeito por evento
 
-**18 eventos** classificados em cada série (pulso × degrau). Predominam efeitos **negativos**
-(paradas/erros derrubam a série); **Carnaval** aparece como **positivo** (acúmulo pós-feriado).
+**18 eventos** classificados em cada série (abrupto × gradual × rebote). Predominam efeitos
+**negativos** (paradas/erros derrubam a série); **Carnaval** aparece como **positivo**
+(acúmulo pós-feriado).
 
 | Evento (exemplos) | Efeito no **Valor** | Efeito na **Quantidade** |
 |---|---|---|
@@ -261,9 +324,11 @@ qtd p=0,0002) indica **trend-stationarity** — não cointegração genuína.
 | Microsoft (29/10/2025) | −R$ 2,82 mi (abrupto) | −1.413 (abrupto) |
 | CrefazOn-Cobrança (03/07/2025) | −R$ 1,28 mi (abrupto) | −705 (abrupto) |
 | Carnaval (05/03/2025) | +R$ 1,77 mi (gradual) | +763 (abrupto) |
+| Kamunda-Enel (22/05/2025) | queda dia 1 + recuperação dia 2 (**rebote**) | — |
 
-Classificação: **Valor** → 8 gradual, 5 abrupto, 5 n.s. (13 regressores) · **Quantidade** →
-7 abrupto, 7 gradual, 4 n.s. (14 regressores).
+Classificação: **Valor** → maioria gradual/abrupto, com a forma **rebote** também presente
+(ex.: Kamunda-Enel) · **Quantidade** → maioria abrupto/não signif. Contagem exata por forma a
+ser confirmada na próxima reexecução do notebook (ver Discussão).
 
 ![Efeito estimado por evento (abrupto × gradual) — série de valor / SARIMAX](img_sarima/interv_efeito.png)
 
@@ -283,6 +348,102 @@ Comparando o SARIMA **sem** e **com** as dummies de intervenção (N = 410):
 - **AIC e desvio do resíduo caem** nas duas séries.
 - **Ljung-Box deixa de rejeitar** (p sobe de ~0,01 para ~0,4): a autocorrelação residual que os
   *spikes* causavam **desaparece** → dinâmica de curto prazo bem capturada.
+
+---
+
+<!-- _class: section-divider -->
+
+## Bloco 3 — Estimação e Validação
+
+### SARIMA/SARIMAX, walk-forward e ranking
+
+---
+
+## Método experimental — walk-forward × ajuste normal
+
+Replica a operação real: **retreina todo dia, prevê o próximo**. Aplicado igualmente às duas séries.
+
+| | **Walk-forward** | **Normal (1 ajuste)** |
+|---|---|---|
+| Nº de ajustes | **N** (um por dia) | 1 |
+| Usa dados futuros p/ estimar? | **Não** (sem vazamento) | in-sample: sim |
+| O que mede | **Erro out-of-sample realista** | qualidade de ajuste |
+| Onde no estudo | ranking | diagnóstico |
+
+- **Dias atípicos** (`Log_Erro` + vésperas) saem do `datas_eval`: o ranking pontua só **dias normais**.
+- Comparação **maçã-com-maçã** com a **Pipeline Antiga** (backup), também previsão diária de 1 passo.
+- **Respeita a ordem temporal:** a cada dia da janela de avaliação, o treino usa só dados
+  **anteriores** (`y_tr = serie.iloc[:loc]`), prevê 1 passo à frente e anda um dia — nunca vê
+  o futuro.
+
+> **Vazamento leve — e só na especificação, não na estimação:** a ordem `(p,d,q)(P,D,Q)` é
+> escolhida **uma única vez** via `auto_arima` sobre a **série inteira**, antes do
+> walk-forward — viés otimista pequeno, porque essa escolha "viu" dados que, em cada dia do
+> walk-forward, ainda estariam no futuro. Os **coeficientes**, porém, são reestimados
+> honestamente a cada dia, só com o passado — a estimação em si (MLE via filtro de Kalman,
+> em cada refit) não vaza. Tolerável porque a ordem é um objeto de baixa dimensão e estável (raramente muda
+> entre 80% e 100% da série); rigor total exigiria congelar a ordem na janela inicial de
+> treino ou reselecioná-la a cada dia (caro).
+
+---
+
+## Métricas de comparação
+
+O ranking é ordenado por **RMSPE** (penaliza erros grandes); as demais métricas dão o retrato completo.
+
+| Métrica | O que mede |
+|---|---|
+| **MAPE médio %** | erro percentual absoluto médio (dia típico) |
+| **RMSPE %** | raiz do erro quadrático percentual — **chave do ranking** (pune outliers) |
+| **R²** | fração da variância explicada |
+| **Viés (MPE)** | erro médio com sinal → super/subestimação sistemática |
+| **DP Erro** | desvio-padrão do erro — dispersão/consistência da previsão, independente do viés |
+| **Mediana %** | robusta a caudas |
+| **% < 5% / < 10%** | acurácia operacional (dias dentro da meta) |
+
+> **Meta de qualidade:** MAPE ≤ 5% (ideal) · ≤ 10% (aceitável), idêntica para valor e quantidade.
+
+---
+
+## Covariáveis
+
+A exógena é sempre de **D-1** (conhecida no momento da previsão → **sem vazamento**).
+
+| Papel | **Valor** | **Quantidade** |
+|---|---|---|
+| Endógena `y_t` | valor diário (R$) | quantidade diária |
+| **Exógena D-1** (só SARIMAX) | `fila_d1` — fila de pagamento de ontem (etapa 15) + dow (`ter…sex`) | `valor_d1` — valor de ontem + dow (`ter…sex`) |
+| **Intervenção** (SARIMA + SARIMAX + Log-retorno) | abrupto/gradual/rebote dos dias especiais | idem |
+
+- **Dummies de dia-da-semana** vêm empacotadas na MESMA exógena D-1 (só entram no **SARIMAX**)
+  e capturam o padrão semanal pelo **dia real**, robusto à ausência de feriados na grade (que
+  desalinharia o lag `t-5`).
+- **SARIMA puro permanece univariado** por design (`exog=None`) → o ranking mostra
+  **diretamente se a exógena ajuda** (SARIMA sem × SARIMAX com). *Spoiler:* ajuda no valor,
+  não na quantidade. A **intervenção**, porém, entra nos **3 modelos** — não é exclusiva do
+  SARIMAX.
+
+---
+
+## Modelos de séries temporais testados
+
+Três famílias candidatas, **todas recebem os regressores de intervenção** (Box–Tiao) e são
+avaliadas no **mesmo walk-forward** — a diferença entre elas é só a estrutura do modelo:
+
+| Modelo | Endógena | Exógena D-1 (além da intervenção) | Intervenção | Ideia central |
+|---|---|---|:---:|---|
+| **SARIMA** | nível (`y_t`) | nenhuma (univariado) | ✅ | AR/MA + sazonalidade semanal (`m=5`) |
+| **SARIMAX** | nível (`y_t`) | `fila_d1` / `valor_d1` | ✅ | SARIMA + regressor exógeno defasado |
+| **Log-retorno** | `log(y_t) − log(y_{t-1})` | nenhuma | ✅ | modela a variação percentual diária, não o nível; a previsão é revertida (`exp`) de volta pro nível ao final |
+
+- **A intervenção (dummies abrupto/gradual/rebote) entra nos 3 modelos**, não só no SARIMAX —
+  é o que descontamina o ajuste dos *spikes* em qualquer um deles.
+- **Só o SARIMAX recebe a covariável de negócio** (`fila_d1`/`valor_d1`) — é essa a única
+  diferença estrutural entre SARIMA e SARIMAX no ranking.
+
+> **Por que Log-retorno entra na disputa:** séries em nível têm variância que cresce com a
+> escala; o log-retorno estabiliza a variância e é a parametrização clássica para retornos
+> financeiros — vale testar se essa transformação ajuda aqui também.
 
 ---
 
@@ -311,8 +472,6 @@ Ajuste in-sample no histórico completo (N = 410), exógena padronizada (z-score
 | **SARIMAX** | 7,32 | **9,21** | **0,753** | +9.651 | 6,02 |
 | SARIMA (univariado) | 7,56 | 9,55 | 0,748 | −27.479 | 6,42 |
 | Pipeline Antiga em Produção | **7,23** | 9,57 | 0,745 | +28.438 | 5,35 |
-| SARIMAX (corrigido) | 7,57 | 9,71 | 0,733 | +5.655 | 6,14 |
-| SARIMA (corrigido) | 7,86 | 10,02 | 0,722 | +3.958 | 6,51 |
 | Log-retorno | 8,27 | 10,97 | 0,610 | +113.506 | 6,72 |
 
 - **SARIMAX tem o melhor RMSPE e o melhor R²** de todos os candidatos.
@@ -326,10 +485,8 @@ Ajuste in-sample no histórico completo (N = 410), exógena padronizada (z-score
 | Modelo | MAPE % | RMSPE % | R² | Viés | Mediana % |
 |---|:---:|:---:|:---:|:---:|:---:|
 | **SARIMA (univariado)** | **7,20** | **9,08** | **0,414** | +15,6 | 6,44 |
-| SARIMA (corrigido) | 7,62 | 9,69 | 0,351 | +5,2 | 6,05 |
 | SARIMAX | 7,31 | 9,79 | 0,319 | +1,0 | 5,52 |
 | Pipeline Antiga em Produção | 7,89 | 9,88 | 0,313 | +40,5 | 6,42 |
-| SARIMAX (corrigido) | 7,88 | 10,52 | 0,228 | +4,4 | 6,35 |
 | Log-retorno | 8,10 | 10,86 | 0,089 | +97,8 | 6,90 |
 
 > **Contraste decisivo:** para a **quantidade**, o **SARIMA univariado vence** — a exógena
@@ -363,7 +520,7 @@ Pipeline Antiga** onde importa:
 - **Autocorrelação:** correlograma dentro das bandas; Ljung-Box **não rejeita** → curto prazo
   bem modelado (**vale para as duas séries**).
 - **Ressalvas (idem qtd):** **heterocedasticidade** e **caudas pesadas/assimetria** (Jarque-Bera
-  significativo) — erros maiores nos dias atípicos. Justifica a intervenção + correção de viés.
+  significativo) — erros maiores nos dias atípicos. Justifica a intervenção como tratamento.
 
 ---
 
@@ -377,29 +534,54 @@ análogo.
 
 ---
 
-## Resultado — Modelos mensais
+<!-- _class: section-divider -->
 
-Ranking do **total do mês** (10 meses avaliados, ordenado por RMSPE):
+## Bloco 4 — Modelos mensais
 
-| | **Valor** | | **Quantidade** | |
-|---|:---:|:---:|:---:|:---:|
-| Modelo | MAPE % | RMSPE % | MAPE % | RMSPE % |
-| **Naive (mês-1)** | **3,54** | **4,66** | **2,94** | **3,64** |
-| Média-Útil MM3 | 6,17 | 6,93 | 3,28 | 4,06 |
-| Ridge | 8,50 | 10,28 | 6,39 | 8,17 |
-| SARIMA (agregado) | 10,78 | 12,60 | 9,65 | 10,27 |
+### O total do mês, além do diário
 
-> **Achado:** para o **total mensal**, a **persistência simples (mês anterior)** domina — o
-> SARIMA diário agregado **não** é competitivo nessa granularidade. O **nowcast** é a ferramenta
-> certa de acompanhamento: converge para o realizado conforme o mês avança.
+---
+
+## Modelos mensais — o método
+
+Além do diário, acompanhamos o **total do mês** de cada série via **Nowcast**: realizado
+acumulado no mês + previsão SARIMAX dos dias úteis restantes → atualiza a estimativa do total
+dia a dia. As exógenas D-1 não entram na previsão dos dias restantes (não são conhecidas no
+horizonte); a ordem sazonal (`m=5`) já captura o padrão semanal.
+
+> **Objetivo:** acompanhar o total do mês em tempo real e caracterizar **a velocidade de
+> convergência** do erro conforme o mês avança — quantos dias úteis são necessários até o
+> nowcast ficar confiável.
+
+---
+
+## Resultado — Nowcast
+
+O nowcast **converge para o realizado** conforme o mês avança (mais dias viram realizado,
+menos ficam a cargo da previsão):
 
 ![Nowcast do total do mês (valor): converge para o realizado conforme o mês avança](img_sarima/nowcast_valor.png)
 
 ---
 
+## Resultado — velocidade de convergência do erro
+
+Trajetória **mediana** do `|Erro %|` do nowcast por dia útil do mês, agregando os **19 meses
+completos** disponíveis (faixa = intervalo interquartil 25–75% entre os meses):
+
+![Trajetória mediana do erro percentual do nowcast ao longo do mês, valor e quantidade](img_sarima/nowcast_trajetoria_erro.png)
+
+> **Achado:** o erro típico começa em ~5–7% nos primeiros dias do mês e cai para **< 2%** a
+> partir de ~2/3 do mês corrido — o nowcast já é uma referência confiável bem antes do
+> fechamento do mês, com trajetórias muito parecidas entre valor e quantidade.
+
+---
+
 <!-- _class: section-divider -->
 
-## Parte III — Interpretação, Conclusão e Discussão
+## Interpretação, Conclusão e Discussão
+
+### Fechamento do estudo
 
 ---
 
@@ -433,19 +615,28 @@ Ranking do **total do mês** (10 meses avaliados, ordenado por RMSPE):
 - Modelos **brancos** competitivos com o melhor ML e **superiores no RMSPE** nas duas séries.
 - A **análise de intervenção** melhora o ajuste (AIC↓, Ljung-Box deixa de rejeitar) em ambas.
 - **Sem cointegração** valor × qtd → séries modeladas separadamente.
+- Resposta à motivação inicial: **sim** — um modelo branco, com especificação única, **iguala
+  ou supera** a pipeline em produção nas duas séries, sem abrir mão de interpretabilidade.
 
 ---
 
 ## Discussão — limitações e próximos passos
 
 **Limitações**
+- **Ajuste de intervenção da cointegração usava 1 único dummy pooled** (mesmo coeficiente para
+  os 37 dias atípicos, sem distinguir Natal/Ano Novo/Carnaval) e só marcava o dia exato da
+  véspera — dias de recesso adjacentes (26, 29, 30/dez) ficavam de fora, deixando alguns dias
+  "não corrigidos" no gráfico de níveis padronizados (ex.: 31/dez/2025, z ≈ −4). **Já corrigido
+  no código:** dummy próprio por tipo de véspera + dummy obrigatório para o dia útil anterior
+  (rush pré-feriado); pendente apenas reexecutar o notebook para atualizar números/figuras.
 - **Heterocedasticidade e caudas pesadas** nos resíduos das duas séries (mitigadas por
-  intervenção + debias, mas presentes) → intervalos de confiança otimistas nos extremos.
+  intervenção, mas presentes) → intervalos de confiança otimistas nos extremos.
 - **Classificação da forma** da intervenção (abrupto × gradual) tem pequeno *look-ahead*
   estrutural: é feita uma vez na série inteira (a maior parte é **calendário**, conhecido de
   antemão); os **coeficientes**, porém, são reestimados a cada dia no walk-forward.
-- Modelos **mensais** mostram que, no total do mês, persistência simples vence — o SARIMA diário
-  **não** é a ferramenta certa para essa granularidade.
+- O **nowcast** do total mensal converge rápido (erro típico < 2% já em ~2/3 do mês corrido),
+  mas ainda não foi comparado contra baselines simples (ex.: persistência do mês anterior) —
+  fica como próximo passo antes de recomendar substituição de qualquer acompanhamento existente.
 
 **Próximos passos**
 - **ARDL bounds test** como *follow-up* formal da cointegração (ordens mistas I(0)/I(1)).
