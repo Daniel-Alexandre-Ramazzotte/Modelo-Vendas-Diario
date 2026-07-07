@@ -1,0 +1,35 @@
+{
+  "_comentario": "EXEMPLO. Gere o real com montar_config_json() no notebook (order/seas + overrides vem de la). Copie para modelo_sarima_producao.json e edite a vontade.",
+  "hist_dias": 540,
+  "log_erro_path": "logs/Log_Erro.xlsx",
+
+  "valor": {
+    "order": [1, 1, 2],
+    "seasonal_order": [0, 0, 1, 5],
+
+    "func_por_tipo": {
+      "log_erro": {"func": "c", "delta": null},
+      "vespera":  {"func": "abrupto", "delta": null}
+    },
+
+    "overrides": {
+      "_comentario": "rotulo do evento -> funcao fixa. Ex.: fixar 'e' (pico+decai) para um erro especifico.",
+      "ACME (2026-03-04)": {"func": "e", "delta": 0.6}
+    },
+
+    "eventos_extra": [
+      {"tipo": "custom", "rotulo": "feirao regional 2026-07", "datas": ["2026-07-15", "2026-07-16"], "impacto_dias": 2, "func": "c", "delta": null}
+    ]
+  },
+
+  "qntd": {
+    "order": [0, 1, 1],
+    "seasonal_order": [0, 0, 1, 5],
+    "func_por_tipo": {
+      "log_erro": {"func": "c", "delta": null},
+      "vespera":  {"func": "abrupto", "delta": null}
+    },
+    "overrides": {},
+    "eventos_extra": []
+  }
+}
