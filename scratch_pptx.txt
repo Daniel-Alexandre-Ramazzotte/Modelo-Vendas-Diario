@@ -1,0 +1,483 @@
+===== SLIDE 1 =====
+Projeção de Vendas Definição Modelo
+
+===== SLIDE 2 =====
+O incremento de canal e produto melhora a previsão? 
+Período avaliado: jan/2026+ | qtd: 71 dias úteis | valor: 71 dias úteis 
+Dentre os selecionados na reunião prévia, qual modelo prevê melhor a quantidade e o valor das propostas? 
+Enriquecer o modelo com CANAL e PRODUTO melhora a previsão? 
+Resultado: o melhor modelo supera a antiga; canal/produto NÃO trouxe ganho relevante. 
+Metodologia se mantém como a apresentada
+Única diferença é que agora se apresenta Viés além de apenas MAPE mais análise do erro safra a safra
+
+===== SLIDE 3 =====
+Como produto e canal entram no modelo?
+base — modelo de produção, SEM canal/produto
++mix — share do canal e do produto dominantes de ontem (2 features). 
++seg — volume de cada canal e cada produto em vários lags (cru, muitas colunas). 
++seg_pca — o mesmo, comprimido por PCA (componentes que somam ≥80% da variância).
+bottom-up — um modelo por célula canal×produto e SOMA das partes (estratégia hierárquica). 
+Tipos de Modelos testados
+
+===== SLIDE 4 =====
+Quantidade
+
+===== SLIDE 5 =====
+Melhores Modelos
+Modelo × Variante | MAPE Médio (%) | MAPE Mediana (%) | Viés (real-pred) | MAE
+SE(LINE)+SE(SGDR)+ABR | bottom-up | 8,32 | 6,07 | 77 | 249,4
+SE(LINE)+SE(SGDR)+ABR | base | 7,04 | 5,28 | 44,3 | 208,6
+SE(LINE)+SE(SGDR)+ABR | +seg_pca | 7,4 | 7,05 | 69,8 | 221
+SE(LINE)+SE(SGDR)+ABR | +seg | 7,55 | 6,48 | 59,8 | 224,4
+SE(LINE)+SE(SGDR)+ABR | +mix | 7,42 | 6,28 | 54,9 | 220,6
+SE(ETR)+MMS+BIN+SE(ELAS)+ABR | bottom-up | 8,6 | 6,16 | 87,2 | 258,5
+SE(ETR)+MMS+BIN+SE(ELAS)+ABR | base | 7,78 | 6,35 | 45,9 | 231,9
+SE(ETR)+MMS+BIN+SE(ELAS)+ABR | +seg_pca | 7,38 | 6,46 | 64 | 220,7
+SE(ETR)+MMS+BIN+SE(ELAS)+ABR | +seg | 9,13 | 8,39 | 117 | 274,4
+SE(ETR)+MMS+BIN+SE(ELAS)+ABR | +mix | 7,55 | 6,22 | 46,2 | 225,2
+Pipeline Antiga | — | 7,39 | 5,49 | 28 | 220
+
+===== SLIDE 6 =====
+Melhores Modelos
+
+===== SLIDE 7 =====
+Melhores Modelos
+
+===== SLIDE 8 =====
+Melhores Modelos
+
+===== SLIDE 9 =====
+Valor
+
+===== SLIDE 10 =====
+Modelo × Variante | MAPE Médio (%) | MAPE Mediana (%) | Viés (real-pred) | MAE
+Voting(GBR+XGB+RFR) | bottom-up | 8,53 | 7,07 | 148621,5 | 465978,3
+Voting(GBR+XGB+RFR) | base | 8,06 | 6,86 | 137353,9 | 438684,5
+Voting(GBR+XGB+RFR) | +seg_pca | 7,77 | 6,85 | 136950,2 | 423662,8
+Voting(GBR+XGB+RFR) | +seg | 8,3 | 6,58 | 167594,2 | 453700,4
+Voting(GBR+XGB+RFR) | +mix | 8,08 | 6,31 | 125449,1 | 438345,4
+SE(ETR)+ABR | bottom-up | 8,47 | 7,53 | 145563,9 | 462955,2
+SE(ETR)+ABR | base | 8,14 | 6,22 | 110231,5 | 441853
+SE(ETR)+ABR | +seg_pca | 7,74 | 6,84 | 95480,6 | 419210,2
+SE(ETR)+ABR | +seg | 7,58 | 6,52 | 100581,7 | 411055,8
+SE(ETR)+ABR | +mix | 8,06 | 6,63 | 97939,3 | 436350,4
+Pipeline Antiga | — | 8,31 | 7,58 | 43814,2 | 451848,2
+ExtraTrees(EXT,j90) | bottom-up | 7,89 | 6,92 | 76155,2 | 427449,2
+ExtraTrees(EXT,j90) | base | 7,02 | 5,75 | 208649,8 | 389169
+ExtraTrees(EXT,j90) | +seg_pca | 8,36 | 6,89 | 330984,9 | 467261,5
+ExtraTrees(EXT,j90) | +seg | 9,49 | 8,22 | 361812,9 | 532861,2
+ExtraTrees(EXT,j90) | +mix | 7,4 | 5,85 | 228060,1 | 411409,8
+
+===== SLIDE 11 =====
+
+===== SLIDE 12 =====
+
+===== SLIDE 13 =====
+
+===== SLIDE 14 =====
+Conclusão
+Canal e Produto não agregam na predição dia-a-dia de vendas, mas apenas adicionam ruído e pioram as métricas de predição no geral
+Mudam pouco os modelos
+A maior mudança é devida a mudança de modelos e não de acréscimo de variáveis
+
+===== SLIDE 15 =====
+Seleção Modelos
+
+===== SLIDE 16 =====
+Dias Especiais
+Foi constatado que as análises da última apresentação, não tiveram todos os outliers devidos excluídos e eles não foram excluídos do treinamento, então aqui vai uma breve explicação de quais dias foram excluídos e porque
+Antes de comparar os modelos, alguns dias são removidos da base de realizados e preditos. O motivo para fazer isto é: nesses dias o realizado não reflete a demanda normal ou houve falha/instabilidade operacional que interrompeu ou represou a captação de propostas, ou é um dia de atividade atipicamente baixa. Mantê-los penalizaria (ou premiaria) os modelos por ruído operacional, não por capacidade preditiva, distorcendo o MAPE/RMSPE da comparação (o que possivelmente ocorreu anteriormente)
+A remoção efetiva acontece na consolidação do ranking, via `mask_dias_excluir(...)`. São dois critérios:
+Log de Erro operacional: dia e próximos n-1 dias úteis (coluna impacto)
+Véspera de Feriado: Natal e Ano Novo
+
+===== SLIDE 17 =====
+Data | Dia_semana | Categoria | Subtipo | Evento_origem | Impacto_dias | Dia_da_janela
+2025-02-06 | Quinta | Log_Erro | BrSCAM | 2025-02-06 | 3 | 1/3
+2025-02-07 | Sexta | Log_Erro | BrSCAM | 2025-02-06 | 3 | 2/3
+2025-02-10 | Segunda | Log_Erro | BrSCAM | 2025-02-06 | 3 | 3/3
+2025-02-26 | Quarta | Log_Erro | CrefazOn | 2025-02-26 | 2 | 1/2
+2025-02-27 | Quinta | Log_Erro | CrefazOn | 2025-02-26 | 2 | 2/2
+2025-02-27 | Quinta | Pre-vespera | Carnaval | 2025-02-28 | 1 | 1/1
+2025-02-28 | Sexta | Vespera | Carnaval | 2025-02-28 | 1 | 1/1
+2025-03-05 | Quarta | Log_Erro | Carnaval | 2025-03-05 | 2 | 1/2
+2025-03-06 | Quinta | Log_Erro | Carnaval | 2025-03-05 | 2 | 2/2
+2025-03-07 | Sexta | Log_Erro | Bacen - Fila Pagamento | 2025-03-07 | 2 | 1/2
+2025-03-10 | Segunda | Log_Erro | Bacen - Fila Pagamento | 2025-03-07 | 2 | 2/2
+2025-03-24 | Segunda | Log_Erro | Enel - Mega | 2025-03-24 | 3 | 1/3
+2025-03-25 | Terca | Log_Erro | Enel - Mega | 2025-03-24 | 3 | 2/3
+2025-03-26 | Quarta | Log_Erro | Enel - Mega | 2025-03-24 | 3 | 3/3
+2025-04-22 | Terca | Log_Erro | CrefazOn | 2025-04-22 | 2 | 1/2
+2025-04-23 | Quarta | Log_Erro | CrefazOn | 2025-04-22 | 2 | 2/2
+2025-05-22 | Quinta | Log_Erro | Kamunda- Enel | 2025-05-22 | 2 | 1/2
+2025-05-23 | Sexta | Log_Erro | Kamunda- Enel | 2025-05-22 | 2 | 2/2
+2025-06-12 | Quinta | Log_Erro | Unico - CrefazOn | 2025-06-12 | 2 | 1/2
+2025-06-13 | Sexta | Log_Erro | Unico - CrefazOn | 2025-06-12 | 2 | 2/2
+2025-06-23 | Segunda | Log_Erro | Code-Mega | 2025-06-23 | 1 | 1/1
+2025-06-27 | Sexta | Log_Erro | CrefazOn | 2025-06-27 | 1 | 1/1
+2025-07-03 | Quinta | Log_Erro | CrefazOn- Cobrança | 2025-07-03 | 1 | 1/1
+2025-10-13 | Segunda | Log_Erro | CrefazOn | 2025-10-13 | 2 | 1/2
+2025-10-14 | Terca | Log_Erro | CrefazOn | 2025-10-13 | 2 | 2/2
+2025-10-24 | Sexta | Log_Erro | E-Consulter | 2025-10-24 | 2 | 1/2
+2025-10-27 | Segunda | Log_Erro | E-Consulter | 2025-10-24 | 2 | 2/2
+2025-10-29 | Quarta | Log_Erro | Microsoft | 2025-10-29 | 1 | 1/1
+2025-12-04 | Quinta | Log_Erro | Crivo | 2025-12-04 | 1 | 1/1
+2025-12-23 | Terca | Pre-vespera | Vespera de Natal | 2025-12-24 | 1 | 1/1
+2025-12-24 | Quarta | Vespera | Natal | 2025-12-24 | 1 | 1/1
+2025-12-30 | Terca | Pre-vespera | Vespera de Ano Novo | 2025-12-31 | 1 | 1/1
+2025-12-31 | Quarta | Vespera | Ano Novo | 2025-12-31 | 1 | 1/1
+2026-02-05 | Quinta | Log_Erro | RBM | 2026-02-05 | 2 | 1/2
+2026-02-06 | Sexta | Log_Erro | RBM | 2026-02-05 | 2 | 2/2
+2026-02-12 | Quinta | Pre-vespera | Vespera de Carnaval | 2026-02-13 | 1 | 1/1
+2026-02-13 | Sexta | Vespera | Carnaval | 2026-02-13 | 1 | 1/1
+2026-04-02 | Quinta | Log_Erro | RBM | 2026-04-02 | 2 | 1/2
+2026-04-06 | Segunda | Log_Erro | RBM | 2026-04-02 | 2 | 2/2
+
+===== SLIDE 18 =====
+Dias Especiais
+
+===== SLIDE 19 =====
+Viés
+Após análises, ficou claro que olhar apenas o MAPE (%) pode não ser suficiente. A métrica leva em conta apenas o erro típico absoluto. 
+Viés Médio = média(Realizado-Predito)
+Quando olhamos o viés dos modelos treinados, nenhum chega perto da pipeline antiga, exceto um modelo de valor Poly(2) + Ridge
+Obs: Ordenado por viés ascendente
+Obs: Tratei mais outliers da base, então o resultado é mais consistente
+
+===== SLIDE 20 =====
+Critério de seleção – RMSPE + Viés + Desvio Padrão
+A métrica principal escolhida foi o RMSPE:
+O motivo é que ela leva em conta o desvio: o quanto o RMSPE ultrapassa o MAPE é 100% governado pelo Desvio (%). Se o erro fosse igual todo dia (Desvio = 0), teríamos RMSPE = MAPE. Quanto maior o desvio, mais o RMSPE se afasta do MAPE. Por exemplo: (APEs 0,0,6,6): MAPE=3, Desvio=3 → RMSPE = sqrt(9+9) = 4,24%.
+Viés = o quão descentrado está o agrupamento das previsões (erro sistemático)
+DP Erro = o quão espalhados estão as previsões em torno do realizado
+RMSPE = a distância total até o centro — junta os dois: RMSPE² = Viés%² + Dispersão%²
+O RMSPE penaliza os outliers mais que outras métricas
+Mas o mais importante para a escolha é o equilíbrio do tradeoff viés X variância
+
+===== SLIDE 21 =====
+Melhores Modelos Qtd
+
+===== SLIDE 22 =====
+Principais Modelos
+Tabela Histórico Completo
+Modelo | MAPE Medio (%) | RMSPE (%) | R2 | Vies (real-prev) | DP Erro | Max (%) | < 5% | < 10% | < 50%
+Pipeline Antiga em Producao | 7,89 | 9,88 | 0,313 | 40,5 | 275,2 | 34,06 | 87/211 | 152/211 | 211/211
+SE(LINE)+SE(SGDR)+ABR | 7,41 | 9,49 | 0,345 | 59,6 | 264,9 | 31,26 | 88/211 | 158/211 | 211/211
+SPct+ABR | 7,47 | 9,59 | 0,336 | 61 | 266,6 | 31,26 | 85/211 | 154/211 | 211/211
+SE(ABR)+MAS+OHE+ABR | 7,32 | 9,62 | 0,328 | 43,7 | 271,6 | 34,42 | 96/211 | 156/211 | 211/211
+SARIMA | 7,19 | 9,64 | 0,339 | 22,6 | 272 | 50,71 | 97/211 | 160/211 | 210/211
+SE(ETR)+MMS+BIN+SE(ELAS)+ABR | 7,67 | 9,73 | 0,311 | 69,9 | 269,6 | 29,6 | 85/211 | 144/211 | 211/211
+
+===== SLIDE 23 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 24 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 25 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 26 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 27 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 28 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 29 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 30 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 31 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 32 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 33 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 34 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 35 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 36 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 37 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 38 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 39 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 40 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 41 =====
+COLOCAR TABELA DE VALORES PREDITOS DE MARÇO
+
+===== SLIDE 42 =====
+Melhores Modelos Valor
+
+===== SLIDE 43 =====
+Principais Modelos
+Tabela Histórico Completo
+Modelo | Posicao Ranking | MAPE Medio (%) | RMSPE (%) | R2 | Vies (real-prev) | DP Erro | Max (%) | < 5% | < 10% | < 50%
+Pipeline Antiga em Producao | 2 | 7,19 | 9,54 | 0,748 | 29990,8 | 433796,9 | 39,52 | 97/211 | 156/211 | 211/211
+SARIMA | 1 | 7,35 | 9,36 | 0,75 | -594,4 | 432295,2 | 30,52 | 88/209 | 152/209 | 209/209
+ExtraTrees(EXT,j90) | 3 | 7,2 | 9,61 | 0,72 | 79400,8 | 450801 | 42,56 | 92/209 | 164/209 | 209/209
+POLY+ABR | 4 | 8,12 | 10,33 | 0,684 | 113974,9 | 472644,7 | 32,44 | 75/209 | 144/209 | 209/209
+Voting(GBR+XGB+RFR) | 8 | 7,97 | 10,65 | 0,66 | 134676,1 | 485427,5 | 33,35 | 85/209 | 146/209 | 209/209
+
+===== SLIDE 44 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 45 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 46 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 47 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 48 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 49 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 50 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 51 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 52 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 53 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 54 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 55 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 56 =====
+Distribuição do Erro e Métricas
+
+===== SLIDE 57 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 58 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 59 =====
+Principais Modelos – Janeiro em diante
+
+===== SLIDE 60 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 61 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 62 =====
+Principais Modelos – Recorte Março
+
+===== SLIDE 63 =====
+Modelos de Totais Mensais
+
+===== SLIDE 64 =====
+Método Nowcast
+Como extra da análise foi realizado um estudo de predição do total mensal utilizando os modelos SARIMA para quantidade e valor. A ideia é:
+Nowcast(D) = realizado acumulado até o dia D + previsão dos dias úteis restantes do mês
+Conforme o mês avança, mais dias viram realizado e menos ficam a cargo da previsão → aestimativa do total converge dia a dia.
+
+===== SLIDE 65 =====
+Método Nowcast
+Como extra da análise foi realizado um estudo de predição mensal utilizando os modelos SARIMA para quantidade e valor
+
+===== SLIDE 66 =====
+Método Nowcast Valor
+Como extra da análise foi realizado um estudo de predição mensal utilizando os modelos SARIMA para quantidade e valor
+
+===== SLIDE 67 =====
+
+===== SLIDE 68 =====
+Método Nowcast Valor
+Como extra da análise foi realizado um estudo de predição mensal utilizando os modelos SARIMA para quantidade e valor
+
+===== SLIDE 69 =====
+
+===== SLIDE 70 =====
+Método Modelo (de fato) Mensal
+Utilizando modelos para prever diretamente o realizado de quantidade e valor mensais (em vez de fazer a predição da trajetória e agregação):
+Modelos de machine learning e outros lineares
+foram testados, mas nenhum teve um desempenho
+melhor que os aqui mencionados e o nowcasting.
+
+===== SLIDE 71 =====
+Comparações
+Valor
+
+===== SLIDE 72 =====
+Comparações
+Valor
+Modelo | MAPE Medio (%) | RMSPE (%) | Mediana (%) | Max (%) | R2 | Vies (real-prev)
+Naive (mes-1) | 3.53 | 4.66 | 2.33 | 9.5 | 0.641 | 2770564.0
+Nowcast (ult. dia mes-1) | 4.43 | 5.27 | 4.17 | 11.04 | 0.547 | 2847009.5
+MediaUtil MM3 | 6.17 | 6.92 | 5.29 | 11.8 | 0.28 | 6545220.6
+ARIMAX | 7.7 | 8.53 | 7.77 | 14.18 | -0.078 | 6106008.9
+
+===== SLIDE 73 =====
+Comparações
+Valor
+
+===== SLIDE 74 =====
+Comparações
+Quantidade
+Modelo | MAPE Medio (%) | RMSPE (%) | Mediana (%) | Max (%) | R2 | Vies (real-prev)
+Naive (mes-1) | 2.94 | 3.64 | 2.8 | 6.89 | 0.597 | 638.6
+MediaUtil MM3 | 3.27 | 4.06 | 2.77 | 7.19 | 0.519 | 1774.8
+Nowcast (ult. dia mes-1) | 4.19 | 4.57 | 3.82 | 7.8 | 0.368 | 640.1
+ARIMAX | 5.49 | 6.55 | 3.65 | 11.17 | -0.277 | 2778.6
+
+===== SLIDE 75 =====
+Comparações
+Quantidade
+
+===== SLIDE 76 =====
+Comparações
+Quantidade
+
+===== SLIDE 77 =====
+Modelos Paramétricos de Séries Temporais 
+
+===== SLIDE 78 =====
+Teste de Cointegração
+Antes de continuar, temos que enxergar que existem duas séries que teoricamente andam juntas
+Esse é o perfil que nos obriga a analisar se faz sentido fazermos cointegração
+
+===== SLIDE 79 =====
+Motivação
+Apesar da pipeline TPOT e os modelos de machine learning fixados responderem bem com poucos dados e serem historicamente validados, para a base atual, que tem uma volumetria bem maior, talvez modelos paramétricos que capturem as dependências temporais façam mais sentido, principalmente por conta da interpretabilidade.
+
+===== SLIDE 80 =====
+Modelo SARIMAX e porque foi escolhido
+SARIMAX = Seasonal Auto Regressive Integrated Moving Average with eXogenous regressors. É a generalização do ARIMA que acrescenta dois elementos indispensáveis para esta série:
+Sazonalidade semanal (`s = 5` dias úteis): segunda a sexta têm patamares diferentes;
+Regressores exógenos: variáveis externas que ajudam a prever o valor do dia(no caso intervenções)
+A justificativa para usá-lo, em vez de só ML/TPOT, é tripla:
+1. É um modelo branco, não caixa-preta. Cada termo tem significado estatístico   (média móvel, sazonalidade, efeito da fila, efeito dos dias de erro) e vem com  coeficiente, erro-padrão e p-valor — ao contrário dos pipelines TPOT, cuja arquitetura  empilhada não permite ler "o quanto a fila pesa".
+2. Modela explicitamente a estrutura temporal (tendência via diferenciação, choque do dia anterior via MA, sazonalidade semanal), que os modelos de ML só capturam de forma indireta via lags como features.
+3. Trata os dias atípicos de forma transparente, com uma dummy de intervenção (modelo de intervenção de Box–Tiao) para os dias de erro operacional, em vez de simplesmente removê-los.
+
+===== SLIDE 81 =====
+Construção da base
+Semelhante a construção antiga
+Agregação diária das propostas da etapa 16, apenas em dias úteis (exclui sábados,domingos e feriados nacionais via workadays) → sazonalidade semanal regular m = 5.
+As duas séries têm o mesmo status: cada uma recebe seleção de ordem, intervenção,ranking e modelo recomendado próprios.
+Histórico: ~410 dias úteis (07/11/2024 → 01/07/2026).
+Janela de avaliação walk-forward: N = 209 (valor) e N = 211 (quantidade).
+
+===== SLIDE 82 =====
+Série de Valor e Eventos de Erro
+Séries com médias móveis de 5 e 20 dias; linhas verticais = dias de intervenção. Ambasmostram nível que passeia (não-estacionário), sazonalidade semanal e quedaspontuais nos dias de erro operacional.
+
+===== SLIDE 83 =====
+Diferenciação
+
+===== SLIDE 84 =====
+Decomposição
+
+===== SLIDE 85 =====
+Função de Autocorrelação e Função de Autocorrelação Parcial
+
+===== SLIDE 86 =====
+Modelos Testados
+
+===== SLIDE 87 =====
+Covariáveis
+
+===== SLIDE 88 =====
+Intervenção
+Pela natureza dos dados faz sentido utilizar análise de intervenção para “descontaminar” o ajuste dos dias de outliers explicados pelo log de erro e vésperas de feriado (dias atípicos)
+Em intervenção podemos considerar eventos de intervenção como impulso ou degrau
+No caso, teoricamente temos apenas apenas impulsos, porque erros operacionais não dão impacto permanente na série
+Função transferência gradual (erros operacionais que tem impacto que decresce gradualmente) ou abrupta (erros operacionais que tem erros que impactam relevantemente apenas um dia)
+Escolha por evento: ajustam-se todas as formas aplicáveis e fica-se com a decoeficiente(s) significativo(s) (p < 0,05) e menor AIC; sem nenhum significativo →não signif.; empate → forma mais simples. Aqui a série mantém os dias especiais, énecessário para estimar o efeito.
+
+===== SLIDE 89 =====
+Funções de Transferência
+As funções de transferência fazem com que o evento tenha um efeito estimado e uma forma de efeito específica
+Todo evento (feriado, mudança operacional, incidente) parte de um indicador de pulso. Seja 𝒟_𝐸 o conjunto de datas do evento 𝐸:
+As funções abaixo transformam esse pulso no regressor exógeno que entra no SARIMA. O fator 𝛿 ∈ (0, 1) controla a velocidade do decaimento.
+
+===== SLIDE 90 =====
+Funções de Transferência
+
+===== SLIDE 91 =====
+Intervenção
+
+===== SLIDE 92 =====
+Intervenção
+
+===== SLIDE 93 =====
+Intervenção
+
+===== SLIDE 94 =====
+Intervenção
+
+===== SLIDE 95 =====
+Intervenção
+
+===== SLIDE 96 =====
+Intervenção
+
+===== SLIDE 97 =====
+Intervenção
+
+===== SLIDE 98 =====
+Intervenção
+
+===== SLIDE 99 =====
+RESULTADO INTERVENCAO
+ARRUMAR
+Antes e depois da intervenção tabela com lung box
+
+===== SLIDE 100 =====
+Modelos Finais
+Nota sobre os coeficientes: O modelo congelado guarda a estrutura (ordens + função de intervenção por evento), não os valores dos parâmetros. Esses são reestimados a cada rodada sobre os dias mais recentes
+
+===== SLIDE 101 =====
+Interpretação
+
+===== SLIDE 102 =====
+Interpretação
+As duas séries têm nível que passeia, não uma média fixa (tendência)
+O motor preditivo é a MA(1), não a sazonalidade. O termo 𝜃1 ≈ −0, 6 é grande e altamente significativo (𝑝 < 0, 001) nas duas séries. 
+A sazonalidade semanal é real, mas fraca. Os termos sazonais (Θ1 no lag 5, e Θ2 no lag 10 para a quantidade) são pequenos e não significativos individualmente (𝑝 ≥ 0, 11 ). A maior parte do padrão semanal já é absorvida pela diferenciação e pela própria grade de dias úteis; o componente sazonal é mantido na estrutura por parcimônia e robustez, mas não é o que governa a série
+Os dias atípicos têm efeito real e mensurável e por isso entram como intervenção, não como descarte. Isolar esses choques descontamina o ajuste: sem eles puxando os parâmetros, os coeficientes AR/MA descrevem a dinâmica normal. 
+O tratamento funciona. Com a intervenção, o Ljung-Box deixa de rejeitar (de 𝑝 ≈ 0, 01 para 0,37 no valor e 0,63 na quantidade): a autocorrelação residual que os spikes causavam desaparece e a dinâmica de curto prazo fica bem modelada. Persistem, como ressalva, heterocedasticidade e caudas pesadas (erros maiores nos dias atípicos), o que torna os intervalos de confiança otimistas nos extremos
+
+===== SLIDE 103 =====
+Conclusão
+Modelos brancos e parcimoniosos: uma única especificação congelada — não retreinada diariamente como a pipeline antiga —, com apenas os parâmetros reestimados a cada rodada sobre os dias mais recentes. (desde 2024) 
+Métricas: igualam ou superam a pipeline antiga no RMSPE nas duas séries, com a vantagem decisiva de serem interpretáveis e auditáveis — cada termo tem significado (nível 𝐼(1), choque MA(1), sazonalidade semanal) e cada dia atípico tem efeito com coeficiente e 𝑝-valor. 
+Resumo: ambas as séries são bem descritas por uma suavização MA(1) sobre a série diferenciada, com sazonalidade semanal leve e os dias atípicos tratados explicitamente por intervenção de Box–Tiao, em vez de removidos ou ignorados.
+
+===== SLIDE 104 =====
+Desenvolvimentos Futuros
+Modelar a dinâmica de variância para incluir intervalos de confiança para dias típicos (possivelmente com modelos GARCH)
+ Validação e aprimoramento de modelos mensais
