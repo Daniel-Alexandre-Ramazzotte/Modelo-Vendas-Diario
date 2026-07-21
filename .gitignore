@@ -4,6 +4,9 @@ lightning_logs/
 *.log
 logs/*.log
 
+# Segredos
+.env
+
 # Python
 __pycache__/
 *.pyc

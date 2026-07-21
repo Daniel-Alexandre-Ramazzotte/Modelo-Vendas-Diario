@@ -80,6 +80,33 @@ ClickHouse em `10.101.150.150:8123`. As tabelas principais são:
 - `crefaz.ft_proposta`: dados de propostas (etapa 16)
 - `crefazon15m.dbo_propostastatushistorico`: histórico de status (etapa 15, usado em valor)
 
+## Cache de queries (`scripts/cache_utils.py`)
+
+Os notebooks de experimento carregam dados via `carregar_com_cache(prefix, chave_partes,
+montar_dados, ...)`, que grava `.pkl` em `cache/` (ignorado pelo git) e permite trabalhar
+offline (sem VPN) reaproveitando a última consulta bem-sucedida.
+
+- **Formato atual (query-aware, envelope versionado):** arquivo nomeado
+  `cache/{prefix}_query_{query_sig}.pkl`, onde `query_sig` é o hash do texto normalizado
+  da(s) query(s) SQL. Conteúdo é um **dict-envelope**:
+  `{'__query_cache_version__': 1, 'prefix', 'created_at', 'key_signature',
+  'query_signature', 'queries', 'data': <objeto original (df/tupla/etc.)>}`.
+  Isso faz o cache só ser reaproveitado quando o **texto da query bate** (não só a chave
+  lógica), evitando servir dados de uma query diferente sob o mesmo prefixo.
+- **Formato legado:** arquivo `cache/{prefix}_{chave}.pkl` contendo o objeto **cru** (sem
+  envelope) — ainda lido para compatibilidade e migrado automaticamente para o formato
+  query-aware na primeira leitura.
+- Query normalizada: janelas rolantes (`INTERVAL N DAY`, `today() - N`) têm o número
+  substituído por `<N>` antes do hash, para não invalidar o cache todo dia por causa da
+  janela deslizante.
+- **Sempre acesse via `carregar_com_cache`** (nunca leia `.pkl` de `cache/` diretamente) —
+  os notebooks já fazem isso e ficam isolados de mudanças de formato. Para ler cache cru
+  manualmente (ex.: script de análise ad-hoc fora do notebook), desembrulhe assim:
+  ```python
+  obj = pickle.load(open(caminho, 'rb'))
+  dados = obj['data'] if isinstance(obj, dict) and '__query_cache_version__' in obj else obj
+  ```
+
 ## Critérios de qualidade do modelo
 
 | Métrica | Qtd | Valor |

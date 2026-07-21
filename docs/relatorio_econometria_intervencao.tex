@@ -59,7 +59,7 @@ transferência de intervenção em vez de descartados da estimação. A validaç
 justificado por decompor o erro em viés e dispersão. Os principais resultados: (i) \textbf{não há
 cointegração} confiável entre valor e quantidade, legitimando a modelagem separada; (ii) a
 intervenção \textbf{descontamina o ajuste} --- o teste de Ljung--Box deixa de rejeitar a hipótese
-de resíduos não-autocorrelacionados ($p$ de $\approx 0{,}01$ para $0{,}37$ e $0{,}63$); e (iii) o
+de resíduos não-autocorrelacionados ($p(10)$ de $\approx 0{,}01$ para $0{,}32$ e $0{,}99$); e (iii) o
 SARIMA \textbf{iguala ou supera} a pipeline em produção no RMSPE nas duas séries, preservando
 interpretabilidade estatística de cada componente.
 
@@ -124,8 +124,8 @@ ordem, intervenção, \emph{ranking} e modelo recomendado próprios.}
 \midrule
 Definição & valor monetário processado no dia & n\textsuperscript{o} de propostas analisadas no dia \\
 Papel     & série-alvo & série-alvo \\
-Histórico & \multicolumn{2}{l}{$\approx$ 410 dias úteis (07/11/2024 $\rightarrow$ 01/07/2026)} \\
-Janela \emph{walk-forward} & $N = 209$ & $N = 211$ \\
+Histórico & \multicolumn{2}{l}{407 dias úteis (22/11/2024 $\rightarrow$ 08/07/2026)} \\
+Janela \emph{walk-forward} & $N = 259$ & $N = 211$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -209,6 +209,75 @@ e modelos com dependência temporal explícita --- \textbf{Auto-ARIMA}, \textbf{
 TPOT de produção (cada \texttt{.pkl}) nos mesmos \emph{folds}.
 \end{itemize}
 
+\paragraph{Construção da base --- modelos de \emph{machine learning} (Partes 1 e 2) vs.\ séries
+temporais (Parte 3).} As Partes 1 e 2 são \textbf{tabulares}: reaproveitam exatamente a mesma base
+de \emph{features} da Seção~\ref{sec:tpot} (\texttt{dia\_semana} $+$ \texttt{lag\_0..6}, mais
+\texttt{lag\_7} da fila no caso do valor) --- ou seja, a dinâmica temporal é \emph{achatada} em
+colunas de defasagem e o problema vira uma regressão \emph{i.i.d.}\ padrão ($X\!\to\!y$), sem
+qualquer noção de data para o estimador. Já a Parte 3 trata a dependência temporal de forma
+\textbf{nativa}: os modelos sequenciais (LSTM, CNN~1D, \emph{Transformer}) recebem as mesmas seis
+defasagens, mas reordenadas cronologicamente em uma \emph{sequência} \texttt{SEQ\_COLS} $=$
+(\texttt{lag\_6},\dots,\texttt{lag\_1}) --- do dia mais antigo ao mais recente --- concatenada a um
+vetor de contexto \texttt{CTX\_COLS} $=$ (\texttt{dia\_semana}, \texttt{lag\_0}); e os modelos
+puramente temporais (Auto-ARIMA, Prophet, NeuralProphet) dispensam as defasagens por completo,
+recebendo apenas a \textbf{série bruta} e o \texttt{dia\_semana} como regressor de calendário,
+aprendendo a autocorrelação diretamente da sequência (como fará depois o SARIMA, Seção~\ref{sec:sarima-modelo}).
+Em todos os casos, o particionamento treino/teste segue
+\texttt{TimeSeriesSplit(n\_splits=20, test\_size=1, max\_train\_size=JANELA\_DIAS=45)}: a cada
+\emph{fold} o modelo é reestimado do zero na janela de 45 dias úteis imediatamente anteriores e
+avaliado em \textbf{1 dia} à frente, nunca visto no treino --- o mesmo protocolo \emph{walk-forward}
+de um passo usado depois para o SARIMA, o que torna a comparação final maçã-com-maçã.
+
+\paragraph{Algumas pipelines testadas (\emph{Parte 2}, seleção TPOT-\emph{like}).} A Tabela~\ref{tab:pipelines}
+lista uma amostra dos candidatos pré-selecionados --- pipelines com pré-processamento $+$
+\emph{ensemble}, no mesmo estilo do que o TPOT de produção monta sozinho ---, com as métricas do
+mesmo \emph{walk-forward}. Os nomes seguem a notação compacta de \texttt{\_pipeline\_sigla}
+(\texttt{experimento\_\{qtd,valor\}.ipynb}): cada etapa do \texttt{sklearn.Pipeline} vira uma sigla
+de 2--4 letras separada por ``+'' (ordem $=$ ordem de execução), e \texttt{SE(\dots)} indica um
+\texttt{StackingEstimator} --- a predição de um regressor auxiliar é anexada como \emph{feature}
+extra antes do passo seguinte.
+\begin{table}[H]
+\centering
+\caption{Amostra de pipelines pré-selecionadas (métricas do \emph{walk-forward}, mesma base de
+datas do \emph{ranking} final). Legenda das siglas: SE $=$ \texttt{StackingEstimator}, ABR $=$
+\texttt{AdaBoostRegressor}, SPct $=$ \texttt{SelectPercentile},
+ETR/EXT $=$ \texttt{ExtraTreesRegressor}, MMS $=$
+\texttt{MinMaxScaler}, MAS $=$ \texttt{MaxAbsScaler}, OHE $=$ \texttt{OneHotEncoder}, BIN $=$
+\texttt{Binarizer}, GBR/XGB/RFR $=$ membros do \emph{Voting} (\emph{Gradient Boosting}/XGBoost/
+\emph{Random Forest}); siglas sem entrada nesta lista (ex.\ LINE, SGDR, ELAS, LSVR) são as 4
+primeiras letras do nome da classe \emph{scikit-learn} (ex.\ \texttt{SGDRegressor}$\to$SGDR).}
+\label{tab:pipelines}
+\small
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+& \textbf{Pipeline} & \textbf{MAPE (\%)} & \textbf{RMSPE (\%)} & \textbf{$R^2$} \\
+\midrule
+\multirow{6}{*}{Qtd.}
+& \textbf{SE(LINE)+SE(SGDR)+ABR}     & 7,41 & \textbf{9,49} & \textbf{0,345} \\
+& SPct+ABR                           & 7,47 & 9,59 & 0,336 \\
+& SE(ABR)+MAS+OHE+ABR                & \textbf{7,32} & 9,62 & 0,328 \\
+& SE(ETR)+MMS+BIN+SE(ELAS)+ABR       & 7,67 & 9,73 & 0,311 \\
+& SARIMA (univariado)                & 7,35 & 9,78 & 0,321 \\
+& Pipeline Antiga em Produção (TPOT) & 7,89 & 9,88 & 0,313 \\
+\midrule
+\multirow{6}{*}{Valor}
+& \textbf{SARIMA (univariado)}                & \textbf{7,31} & \textbf{9,56} & \textbf{0,753} \\
+& ExtraTrees(EXT,j90)                          & 7,47 & 9,94 & 0,718 \\
+& MAS+OHE+MAS+OHE+SE(SGDR)+MMS+LSVR            & 8,51 & 10,58 & 0,672 \\
+& Pipeline Antiga em Produção (TPOT)           & 8,48 & 10,75 & 0,696 \\
+& VotingRegressor (RF$+$ET$+$XGB)              & 8,19 & 10,77 & 0,673 \\
+& Voting(GBR+XGB+RFR)                          & 8,13 & 10,78 & 0,675 \\
+\bottomrule
+\end{tabular}
+\end{table}
+Note-se que o \textbf{SARIMA} --- que sequer usa a base tabular de \emph{lags}, apenas a série
+bruta e os regressores de intervenção --- é o 1\textsuperscript{o} colocado no valor e, na
+quantidade, empata em MAPE com o melhor \emph{stacking} (7,35 vs.\ 7,32) ficando $0{,}3$ p.p.\
+atrás em RMSPE, sempre à frente da pipeline de produção. Isso reforça a conclusão da
+Seção~\ref{sec:experimento}: a sofisticação tabular (\emph{stacking}, seleção de variáveis,
+\emph{ensembles}) não compra precisão extra consistente frente a um modelo que representa a
+autocorrelação diretamente.
+
 \paragraph{Exclusão de dias atípicos na avaliação.}
 \label{sec:excluir}
 Há uma distinção importante entre \emph{estimar} e \emph{avaliar}: os dias atípicos podem entrar no
@@ -286,7 +355,7 @@ $\phi,\theta,\Phi,\Theta$. Em vez de descartar esses dias da estimação, adota-
 de intervenção de Box--Tiao}: cada evento entra como um regressor determinístico cuja resposta
 dinâmica é uma \emph{função de transferência} aplicada a um indicador de pulso
 \begin{equation}
-P_t = \mathbb{1}[\,t \in \mathcal{D}_E\,],
+P_t = 1\{\,t \in \mathcal{D}_E\,\},
 \qquad
 y_t = \frac{\omega(B)}{\delta(B)}\,B^{b}\,P_t \;+\; N_t,
 \label{eq:boxtiao}
@@ -312,7 +381,7 @@ AIC; sem nenhum significativo $\to$ ``não signif.''; empate $\to$ a mais simple
 \midrule
 Abrupto        & $x_t = P_t$ & choque constante nos dias de impacto, retorno abrupto a zero \\
 Gradual        & $x_t = \tfrac{n-k}{n},\ t=d_k$ & rampa linear decrescente ($1$ no 1\textsuperscript{o} dia $\to 1/n$ no último) \\
-Rebote (2 reg.)& $x^{(1)}_t=\mathbb{1}[t=d_0],\ x^{(2)}_t=\mathbb{1}[t\in\{d_1,\dots\}]$ & queda no 1\textsuperscript{o} dia + recuperação (sinais opostos) do \emph{backlog} \\
+Rebote (2 reg.)& $x^{(1)}_t=1\{t=d_0\},\ x^{(2)}_t=1\{t\in\{d_1,\dots\}\}$ & queda no 1\textsuperscript{o} dia + recuperação (sinais opostos) do \emph{backlog} \\
 Transf.\ g     & $x_t=\delta x_{t-1}+P_t$ & choque temporário com decaimento geométrico \\
 Transf.\ b     & $x_t=\delta x_{t-1}+P_{t-1}$ & igual ao \emph{g}, com atraso de um dia \\
 Transf.\ c     & $x_t=\sum_{\tau\le t}P_\tau$ & degrau permanente (mudança de patamar) \\
@@ -388,11 +457,12 @@ $+$ sazonal semanal $+$ resíduo com \emph{spikes}), com histórico ligeiramente
 \label{sec:res-coint}
 
 Após remover o pulso dos dias atípicos, Engle--Granger \textbf{não rejeita} a ausência de
-cointegração (estatística $=-0{,}60$, $p=0{,}956$) e o ADF do \emph{ticket} médio indica erro de
-equilíbrio não-estacionário ($p=0{,}790$) --- Tabela~\ref{tab:coint}. O Johansen sem tendência
-aponta 0 relações; com tendência determinística aponta 2, mas isso coincide com a
+cointegração (estatística $=-1{,}02$, $p=0{,}900$) e o ADF do \emph{ticket} médio indica erro de
+equilíbrio não-estacionário ($p=0{,}631$; com tendência, $p=0{,}383$) --- Tabela~\ref{tab:coint}.
+O Johansen sem tendência aponta 0 relações (traço $12{,}84 < 15{,}49$ a 5\%); com tendência
+determinística aponta 2, mas isso coincide com a
 \emph{trend-stationarity} detectada pelo ADF-\texttt{ct}, ou seja, \emph{não} é cointegração
-genuína. A relação estimada foi $\text{valor}=-1{.}536{.}713 + 2{.}220{,}46\cdot\text{qtd}$
+genuína. A relação estimada foi $\text{valor}=-1{.}830{.}731 + 2{.}332{,}69\cdot\text{qtd}$
 ($\beta \approx$ \emph{ticket} médio), mas seu resíduo \textbf{deriva} ao longo do tempo
 (Figura~\ref{fig:coint}).
 
@@ -405,13 +475,13 @@ genuína. A relação estimada foi $\text{valor}=-1{.}536{.}713 + 2{.}220{,}46\c
 \toprule
 Teste & Valor & Quantidade & Leitura \\
 \midrule
-ADF nível              & $p=0{,}060$ & $p=0{,}0005$ & valor $I(1)$ · qtd $I(0)$ (ordens mistas) \\
+ADF nível              & $p=0{,}723$ & $p=0{,}0005$ & valor $I(1)$ · qtd $I(0)$ (ordens mistas) \\
 ADF 1\textsuperscript{a} dif. & $p=0{,}000$ & $p=0{,}000$ & ambas estacionárias diferenciadas \\
-ADF-\texttt{ct}        & $p=0{,}0004$ & $p=0{,}0003$ & ambas \emph{trend-stationary} \\
-Engle--Granger ($-0{,}60$) & \multicolumn{2}{c}{$p=0{,}956$} & \textbf{não rejeita} $\to$ sem cointegração \\
-ADF do \emph{ticket} médio & \multicolumn{2}{c}{$p=0{,}790$} & erro de equilíbrio não-estacionário \\
+ADF-\texttt{ct}        & $p=0{,}0005$ & $p=0{,}0002$ & ambas \emph{trend-stationary} \\
+Engle--Granger ($-1{,}02$) & \multicolumn{2}{c}{$p=0{,}900$} & \textbf{não rejeita} $\to$ sem cointegração \\
+ADF do \emph{ticket} médio & \multicolumn{2}{c}{$p=0{,}631$} & erro de equilíbrio não-estacionário \\
 \midrule
-ARDL \emph{bounds} (caso III) & $F=2{,}34$ & $F=2{,}66$ & $F<$\,I(0)$_{5\%}{=}3{,}80$ $\to$ \textbf{não rejeita} \\
+ARDL \emph{bounds} (caso III) & $F=2{,}36$ & $F=2{,}66$ & $F<$\,I(0)$_{5\%}{=}3{,}80$ $\to$ \textbf{não rejeita} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -428,7 +498,8 @@ zero, evidência visual da ausência de cointegração.}
 \paragraph{\emph{Follow-up} formal (ARDL).} Como as ordens de integração são \textbf{mistas}
 $I(0)/I(1)$, o teste apropriado dispensa a pré-classificação em $I(1)$: o \textbf{teste de limites}
 de Pesaran--Shin--Smith (\emph{bounds test}), que verifica a existência de uma \emph{relação de
-nível}. Nas duas direções a estatística $F$ ($2{,}34$ para valor$|$qtd; $2{,}66$ para qtd$|$valor)
+nível}. Nas duas direções a estatística $F$ ($2{,}36$ para valor$|$qtd, ARDL(3,3); $2{,}66$ para
+qtd$|$valor, ARDL(4,4))
 fica \textbf{abaixo do limite inferior} $I(0)$ a 5\% ($3{,}80$) --- \emph{não} se rejeita a ausência
 de relação de nível, \textbf{confirmando} Engle--Granger e Johansen (Tabela~\ref{tab:coint}).
 
@@ -447,7 +518,7 @@ cointegração --- definida apenas para séries $I(1)$ --- torna-se \emph{inapli
 resultado \textbf{esperado}, não um fracasso: ela só descarta a família VECM/correção de erro.
 
 Rejeitar cointegração não impede modelagem conjunta --- muda apenas \emph{qual} modelo é apropriado.
-Três alternativas foram testadas no \textbf{mesmo walk-forward 1-passo e nas mesmas datas} do
+Quatro alternativas foram testadas no \textbf{mesmo walk-forward 1-passo e nas mesmas datas} do
 \emph{ranking} univariado (contraste controlado, todas sem \emph{dummies} de intervenção):
 \begin{enumerate}\setlength\itemsep{1pt}
 \item \textbf{(a) Decomposição por ticket} --- $\text{valor}=\text{qtd}\times\text{ticket}$:
@@ -464,48 +535,76 @@ termo contemporâneo substituído pela previsão univariada da outra série (sem
 contraparte \emph{preditiva} do teste de limites ARDL acima.
 \end{enumerate}
 
-A Tabela~\ref{tab:joint} traz o resultado. \textbf{O SARIMA univariado é o mais adequado.} Na
-quantidade ele vence na frente (RMSPE 9,07\% contra 9,24\% do ARDL, 9,49\% do VAR e 10,80\% do SUR).
-No valor, \emph{ticket} e \emph{ARDL encadeado} apenas \emph{empatam} (9,44\% e 9,51\% vs.\ 9,58\%,
-$\approx 0{,}1$ p.p., dentro do ruído amostral) --- e nem são modelos de dinâmica conjunta: usam a
-identidade estrutural e ainda precisam prever a quantidade antes ($\hat q$). Já \textbf{SUR e VAR
-pioram} nas duas séries. O motivo confirma a
-leitura da cointegração: o elo forte é \emph{contemporâneo} e, portanto, \emph{inutilizável} para
-prever D+1 (não se conhece o qtd de amanhã ao prever o valor); resta o elo \emph{defasado}, fraco,
-cujos termos cruzados só adicionam \textbf{variância} sem reduzir viés. Sem correção de erro
-(i.e.\ sem cointegração), a informação cruzada não carrega conteúdo preditivo --- apenas ruído.
+Adicionalmente, a mesma bateria testa se \textbf{outra especificação univariada} bate o SARIMA na
+própria frente onde ele já joga (sem qualquer ligação entre as séries):
+\begin{enumerate}\setlength\itemsep{1pt}\renewcommand{\labelenumi}{(\alph{enumi})}\setcounter{enumi}{4}
+\item \textbf{(e) Prophet} --- decomposição aditiva tendência $+$ sazonalidade semanal, otimização
+bayesiana (Stan); robusto a \emph{outliers}, dispensa escolha manual de ordem.
+\item \textbf{(f) UCM} (\emph{Unobserved Components}) --- modelo estrutural de espaço de estados
+(\emph{local linear trend} $+$ sazonal estocástico, período 5): decompõe nível, inclinação e
+sazonalidade como componentes latentes filtrados por Kalman, em vez do MA/AR do SARIMA sobre a
+diferença.
+\item \textbf{(g) TVP-regressão} (parâmetros variantes no tempo) --- intercepto, \emph{dummies} de
+dia-da-semana e $\text{lag}_1$, mas com \textbf{coeficientes em passeio aleatório} (filtro de
+Kalman) em vez de fixos.
+\end{enumerate}
+
+A Tabela~\ref{tab:joint} traz o resultado completo. \textbf{O SARIMA univariado é o mais adequado.}
+Na quantidade ele vence na frente (RMSPE 9,07\% contra 9,24\% do ARDL, 9,42\% do UCM, 9,47\% do TVP,
+9,48\% do VAR e 10,80\% do SUR); Prophet fica ainda mais atrás (10,58\%). No valor, \emph{ticket} e
+\emph{ARDL encadeado} apenas \emph{empatam} (9,46\% e 9,54\% vs.\ 9,55\%, $\le 0{,}1$ p.p.,
+dentro do ruído amostral) --- e nem são modelos de dinâmica conjunta: usam a identidade estrutural e
+ainda precisam prever a quantidade antes ($\hat q$). TVP já perde por $\approx 0{,}4$ p.p.
+(9,95\%); \textbf{SUR, Prophet e UCM pioram} de forma acentuada (12,14\%, 12,89\% e 16,03\%). O
+motivo, para SUR/VAR, confirma a leitura da cointegração: o elo forte é \emph{contemporâneo} e,
+portanto, \emph{inutilizável} para prever D+1 (não se conhece o qtd de amanhã ao prever o valor);
+resta o elo \emph{defasado}, fraco, cujos termos cruzados só adicionam \textbf{variância} sem
+reduzir viés. Já Prophet e UCM perdem por razão diferente: são \textbf{mais parametrizados} que o
+SARIMA parcimonioso $(0,1,1)(0,0,q)_5$ e, com um treino curto no início de cada janela
+($\sim$25--35 obs.), pagam essa flexibilidade extra em variância sem reduzir viés --- o padrão real
+é simples (MA(1) sobre a diferença $+$ sazonalidade semanal fraca) e não recompensa componentes
+latentes extras. O TVP fica perto por razão semelhante, mas o efeito é pequeno porque a variação
+real dos coeficientes ao longo da amostra é modesta.
 
 \begin{table}[H]
 \centering
-\caption{Modelagem conjunta vs.\ univariada --- walk-forward 1-passo, mesmas janelas (sem
-intervenção). Menor RMSPE por série em negrito.}
+\caption{Modelagem conjunta e especificações univariadas alternativas vs.\ SARIMA univariado ---
+walk-forward 1-passo, mesmas janelas (sem intervenção). Menor RMSPE por série em negrito.}
 \label{tab:joint}
 \small
 \begin{tabular}{@{}llccc@{}}
 \toprule
 Série & Modelo & RMSPE (\%) & MAPE (\%) & $R^2$ \\
 \midrule
-\multirow{5}{*}{Valor ($N{=}209$)}
- & \textbf{(a) Ticket} $\hat q\cdot\hat t$ & \textbf{9,44}  & 7,51 & 0,744 \\
- & (d) ARDL valor$\leftarrow$qtd            & 9,51           & 7,47 & 0,743 \\
- & SARIMA univariado                        & 9,58           & 7,71 & 0,730 \\
- & (c) VAR em diferenças                    & 9,89           & 7,75 & 0,701 \\
- & (b) SUR bivariado                        & 11,84          & 9,24 & 0,555 \\
+\multirow{8}{*}{Valor ($N{=}259$)}
+ & \textbf{(a) Ticket} $\hat q\cdot\hat t$ & \textbf{9,46}  & 7,58 & 0,755 \\
+ & (d) ARDL valor$\leftarrow$qtd            & 9,54           & 7,57 & 0,752 \\
+ & SARIMA univariado                        & 9,55           & 7,70 & 0,743 \\
+ & (g) TVP-regressão                        & 9,95           & 7,81 & 0,725 \\
+ & (c) VAR em diferenças                    & 9,99           & 7,80 & 0,719 \\
+ & (b) SUR bivariado                        & 12,14          & 9,55 & 0,567 \\
+ & (e) Prophet                              & 12,89          & 9,90 & 0,604 \\
+ & (f) UCM                                  & 16,03          & 11,83& 0,228 \\
 \midrule
-\multirow{4}{*}{Qtd.\ ($N{=}211$)}
+\multirow{7}{*}{Qtd.\ ($N{=}211$)}
  & \textbf{SARIMA univariado}               & \textbf{9,07}  & 7,32 & 0,399 \\
  & (d) ARDL qtd$\leftarrow$valor            & 9,24           & 7,56 & 0,372 \\
- & (c) VAR em diferenças                    & 9,49           & 7,31 & 0,335 \\
+ & (f) UCM                                  & 9,42           & 7,56 & 0,356 \\
+ & (g) TVP-regressão                        & 9,47           & 7,35 & 0,351 \\
+ & (c) VAR em diferenças                    & 9,48           & 7,30 & 0,336 \\
+ & (e) Prophet                              & 10,58          & 8,54 & 0,205 \\
  & (b) SUR bivariado                        & 10,80          & 8,62 & 0,102 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \noindent\textbf{Consequência metodológica:} como o erro de equilíbrio não reverte à média, o teste
-de limites ARDL \emph{não rejeita} a ausência de relação de nível e \emph{nenhum} modelo conjunto
-supera o univariado, \emph{modelam-se as séries separadamente} (SARIMA univariado $+$ intervenção).
-As alternativas conjuntas ou empatam (\emph{ticket}/ARDL, estruturais e encadeados) ou pioram
-(SUR/VAR). O \emph{follow-up} formal apropriado ao caráter misto $I(0)/I(1)$ é justamente o ARDL
+de limites ARDL \emph{não rejeita} a ausência de relação de nível e \emph{nenhuma} alternativa ---
+conjunta (b/c/d) ou univariada mais flexível (e/f/g) --- supera o univariado, \emph{modelam-se as
+séries separadamente} com o SARIMA parcimonioso (\emph{+}\ intervenção). As alternativas conjuntas
+ou empatam (\emph{ticket}/ARDL, estruturais e encadeados) ou pioram (SUR/VAR); as univariadas mais
+parametrizadas (Prophet, UCM, TVP) pagam variância extra sem reduzir viés, num padrão que já é
+simples. O \emph{follow-up} formal apropriado ao caráter misto $I(0)/I(1)$ é justamente o ARDL
 (Pesaran--Shin--Smith), não o VECM --- e foi ele que fechou o argumento.
 
 \subsection{Intervenção: classificação por evento e descontaminação do ajuste}
@@ -523,36 +622,41 @@ séries.
 \centering
 \caption{Distribuição das formas de intervenção escolhidas (função vencedora por AIC), por série
 --- fonte: \texttt{config/modelo\_sarima\_producao.json}. As 23 janelas incluem os 17 incidentes
-do \texttt{Log\_Erro} e 6 janelas de véspera.}
+do \texttt{Log\_Erro} e 6 janelas de véspera. Fórmulas conforme a Eq.~\eqref{eq:boxtiao} e a
+Tabela~\ref{tab:transfer} ($P_t$: pulso do evento; $\delta\in(0,1)$: decaimento; $d_0,\dots,d_{n-1}$:
+dias do evento).}
 \label{tab:efeitos}
 \small
-\begin{tabular}{@{}lcc@{}}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}lp{5.3cm}cc@{}}
 \toprule
-Forma de intervenção & \textbf{Valor} ($n$) & \textbf{Quantidade} ($n$) \\
+Forma de intervenção & \textbf{Fórmula} & \textbf{Valor} ($n$) & \textbf{Quantidade} ($n$) \\
 \midrule
-Abrupto (choque pontual)          & 5 & 3 \\
-Gradual (rampa decrescente)       & 5 & 0 \\
-Rebote (queda $+$ recuperação)    & 2 & 0 \\
-\emph{b} (geom.\ com atraso 1 dia)& 3 & 4 \\
-\emph{c} (degrau permanente)      & 0 & 3 \\
-\emph{e} (pulso $+$ cauda)        & 3 & 2 \\
-\emph{f} (patamar suave)          & 1 & 2 \\
-\emph{g} (decaimento geométrico)  & 1 & 1 \\
-Não signif.\ (descartado)         & 3 & 8 \\
+Abrupto (choque pontual)          & $x_t = P_t$ & 5 & 3 \\
+Gradual (rampa decrescente)       & $x_t = \tfrac{n-k}{n},\ t=d_k$ & 5 & 0 \\
+Rebote (queda $+$ recuperação)    & $x^{(1)}_t=1\{t=d_0\},\ x^{(2)}_t=1\{t\in\{d_1,\dots\}\}$ & 2 & 0 \\
+\emph{b} (geom.\ com atraso 1 dia)& $x_t=\delta x_{t-1}+P_{t-1}$ & 3 & 5 \\
+\emph{c} (degrau permanente)      & $x_t=\sum_{\tau\le t}P_\tau$ & 0 & 3 \\
+\emph{e} (pulso $+$ cauda)        & $x^{(1)}_t=P_t,\ x^{(2)}_t=\delta x^{(2)}_{t-1}+P_t$ & 2 & 2 \\
+\emph{f} (patamar suave)          & $x_t=\sum_{\tau\le t}v_\tau,\ v_\tau=\delta v_{\tau-1}+P_\tau$ & 0 & 3 \\
+\emph{g} (decaimento geométrico)  & $x_t=\delta x_{t-1}+P_t$ & 1 & 1 \\
+Não signif.\ (descartado)         & --- & 5 & 6 \\
 \midrule
-\textbf{Total}                    & \textbf{23} & \textbf{23} \\
+\textbf{Total}                    & & \textbf{23} & \textbf{23} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Dois padrões chamam a atenção. Primeiro, \textbf{muitos incidentes afetam o valor mas não a
-quantidade}: são 8/23 janelas ``não signif.'' na quantidade contra apenas 3/23 no valor --- uma
-parada operacional muda o \emph{quanto} é processado sem necessariamente mudar \emph{quantas}
-propostas entram. Segundo, predominam formas com \textbf{decaimento/cauda} (\emph{b}, \emph{g},
-\emph{e}, \emph{f}) em vez do choque puramente abrupto: o efeito de um erro não some de um dia para
-o outro --- há \emph{backlog} processado nos dias seguintes. As vésperas seguem padrão próprio: o
-dia anterior (D-1) é um pulso com cauda (\emph{e}, $\delta=0{,}1$) nas duas séries, enquanto a
-véspera de Natal e de Ano-Novo é um choque \textbf{abrupto}; o Carnaval difere entre séries.
+Dois padrões chamam a atenção. Primeiro, \textbf{o mesmo evento raramente recebe a mesma forma nas
+duas séries}: são 6/23 janelas ``não signif.'' na quantidade e 5/23 no valor, e as classes
+vencedoras quase nunca coincidem --- uma parada operacional pode mudar o \emph{quanto} é processado
+sem mudar \emph{quantas} propostas entram (e vice-versa). Segundo, o \emph{perfil} do efeito difere
+por série: na \textbf{quantidade} predominam formas com \textbf{cauda/persistência} (\emph{b},
+\emph{c}, \emph{e}, \emph{f}: 11 das 17 janelas significativas) --- o \emph{backlog} é processado
+nos dias seguintes ---, enquanto no \textbf{valor} dominam choques pontuais e rampas
+(abrupto/gradual/rebote: 12/18). As vésperas seguem padrão próprio e \emph{idêntico} nas duas
+séries: o dia anterior (D-1) é um pulso com cauda (\emph{e}, $\delta=0{,}1$) e a véspera de Natal e
+de Ano-Novo é um choque \textbf{abrupto}; o Carnaval não é significativo em nenhuma das duas.
 
 \begin{figure}[H]
 \centering
@@ -580,7 +684,8 @@ descartados. Fonte: modelo congelado de produção.}
 O efeito da intervenção sobre a \emph{qualidade do ajuste} é um dos resultados centrais: com as
 \emph{dummies}, o \textbf{Ljung--Box deixa de rejeitar} a hipótese de resíduos
 não-autocorrelacionados --- o $p(10)$ sobe de $\approx 0{,}01$ (sem intervenção, em ambas as
-séries) para \textbf{0,37} (valor) e \textbf{0,63} (quantidade), como mostra a
+séries) para \textbf{0,32} (valor) e \textbf{0,99} (quantidade); no \emph{lag} 20, onde a rejeição
+era ainda mais clara ($p<0{,}01$), passa a $0{,}25$/$0{,}99$ --- como mostra a
 Tabela~\ref{tab:coef}. Isso fica visual de duas formas. \textbf{(i) No tempo}: o resíduo \emph{pré}
 intervenção tem \emph{spikes} enormes exatamente nos dias de \texttt{Log\_Erro} e véspera
 (linhas marcadas); \emph{pós} intervenção esses picos desaparecem e o resíduo fica homogêneo
@@ -631,30 +736,32 @@ normal após tratar os dias atípicos.}
 \label{sec:res-est}
 
 A Tabela~\ref{tab:coef} traz o ajuste \emph{in-sample} do modelo congelado (regressão com erros
-SARIMA $+$ intervenção, $N=414$). O achado central é econométrico: o \textbf{motor preditivo é a
+SARIMA $+$ intervenção, $N=409$). O achado central é econométrico: o \textbf{motor preditivo é a
 MA(1)}, não a sazonalidade. O termo $\theta_1 \approx -0{,}6$ é grande e altamente significativo
 ($p<0{,}001$) nas duas séries --- de longe o coeficiente mais forte. Num IMA(1,1), isso equivale a
 uma \textbf{suavização do tipo média móvel exponencial}: a previsão de amanhã é o nível de hoje
 corrigido por $\approx 60\%$ do erro de previsão de ontem. A \textbf{sazonalidade semanal é real,
-mas fraca} ($\Theta$ pequenos e não significativos individualmente, $p\ge 0{,}11$): a maior parte
+mas fraca} ($\Theta$ pequenos e não significativos individualmente, $p\ge 0{,}10$): a maior parte
 do padrão semanal já é absorvida pela diferenciação e pela grade de dias úteis.
 
 \begin{table}[H]
 \centering
-\caption{Coeficientes \emph{in-sample} do modelo congelado ($N=414$ dias úteis) e diagnóstico de
-Ljung--Box. Fonte: \texttt{docs/modelo\_sarima\_intervencoes.md}.}
+\caption{Coeficientes \emph{in-sample} do modelo congelado ($N=409$ dias úteis) e diagnóstico de
+Ljung--Box. Fonte: reestimação do \emph{config} congelado
+(\texttt{config/modelo\_sarima\_producao.json}) sobre o histórico atual.}
 \label{tab:coef}
 \small
 \begin{tabular}{@{}lcc@{}}
 \toprule
 Termo & \textbf{Valor} $(0,1,1)(0,0,1)_5$ & \textbf{Qtd} $(0,1,1)(0,0,2)_5$ \\
 \midrule
-MA(1) --- $\theta_1$ (choque de ontem) & $\mathbf{-0{,}645}$ · $p<0{,}001$ & $\mathbf{-0{,}605}$ · $p<0{,}001$ \\
-MA sazonal --- $\Theta_1$ (lag 5)      & $-0{,}074$ · $p=0{,}11$ & $-0{,}035$ · $p=0{,}47$ \\
-MA sazonal --- $\Theta_2$ (lag 10)     & --- & $+0{,}014$ · $p=0{,}79$ \\
-AIC                                    & 11.796,7 & 5.661,2 \\
-Ljung--Box $p(10)$ (com interv.)       & \textbf{0,37} \checkmark & \textbf{0,63} \checkmark \\
+MA(1) --- $\theta_1$ (choque de ontem) & $\mathbf{-0{,}646}$ · $p<0{,}001$ & $\mathbf{-0{,}617}$ · $p<0{,}001$ \\
+MA sazonal --- $\Theta_1$ (lag 5)      & $-0{,}078$ · $p=0{,}10$ & $-0{,}035$ · $p=0{,}48$ \\
+MA sazonal --- $\Theta_2$ (lag 10)     & --- & $+0{,}022$ · $p=0{,}68$ \\
+AIC (sem $\to$ com intervenção)        & 11.804,8 $\to$ 11.648,0 & 5.728,5 $\to$ 5.596,5 \\
+Ljung--Box $p(10)$ (com interv.)       & \textbf{0,32} \checkmark & \textbf{0,99} \checkmark \\
 Ljung--Box $p(10)$ (sem interv.)       & $\approx 0{,}01$ \ding{55} & $\approx 0{,}01$ \ding{55} \\
+Ljung--Box $p(20)$ (sem $\to$ com)     & $<0{,}01 \to 0{,}25$ & $<0{,}01 \to 0{,}99$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -666,13 +773,14 @@ Sob o mesmo protocolo \emph{walk-forward}, o SARIMA compete com a pipeline antig
 modelos de ML/TPOT. Os resultados diferem entre as séries e merecem leitura cuidadosa.
 
 \paragraph{Valor (Tabela~\ref{tab:rank-valor}).} O SARIMA é o \textbf{1\textsuperscript{o}
-colocado}: melhor RMSPE (9,36\%), melhor $R^2$ (0,750), menor viés (praticamente zero: $-594$ vs.\
-$+29.991$ da antiga) e menor erro máximo (30,52\% vs.\ 39,52\%). Perde por pouco no MAPE médio para
-a antiga (7,35\% vs.\ 7,19\%). É uma vitória limpa, e com viés quase nulo.
+colocado}: melhor RMSPE (9,56\%), melhor MAPE (7,31\%), melhor $R^2$ (0,753) e menor viés
+($+31.445$ vs.\ $+46.274$ da antiga --- MPE de apenas $0{,}05\%$). O ExtraTrees ganha somente na
+fração de dias com erro $<10\%$ (199 vs.\ 193 de 259). É uma vitória limpa nas quatro métricas
+principais.
 
 \begin{table}[H]
 \centering
-\caption{\emph{Ranking} --- Valor (histórico completo, ordenado por RMSPE). Viés e DP Erro em R\$.}
+\caption{\emph{Ranking} --- Valor (histórico completo, $N=259$, ordenado por RMSPE). Viés em R\$.}
 \label{tab:rank-valor}
 \small
 \setlength{\tabcolsep}{4.5pt}
@@ -680,22 +788,22 @@ a antiga (7,35\% vs.\ 7,19\%). É uma vitória limpa, e com viés quase nulo.
 \toprule
 Modelo & MAPE\% & RMSPE\% & $R^2$ & Viés & Máx.\% & $<$10\% \\
 \midrule
-\textbf{SARIMA}                & 7,35 & \textbf{9,36} & \textbf{0,750} & \textbf{$-$594}   & \textbf{30,52} & 152/209 \\
-Pipeline Antiga em Produção    & \textbf{7,19} & 9,54 & 0,748 & $+$29.991 & 39,52 & 156/211 \\
-ExtraTrees (EXT, j90)          & 7,20 & 9,61 & 0,720 & $+$79.401 & 42,56 & \textbf{164/209} \\
-POLY+ABR                       & 8,12 & 10,33 & 0,684 & $+$113.975 & 32,44 & 144/209 \\
-Voting (GBR+XGB+RFR)           & 7,97 & 10,65 & 0,660 & $+$134.676 & 33,35 & 146/209 \\
+\textbf{SARIMA}                & \textbf{7,31} & \textbf{9,56} & \textbf{0,753} & \textbf{$+$31.445} & 39,85 & 193/259 \\
+ExtraTrees (EXT, j90)          & 7,47 & 9,94 & 0,718 & $+$94.315 & 42,56 & \textbf{199/259} \\
+MAS+OHE+$\cdots$+SE(SGDR)+MMS+LSVR & 8,51 & 10,58 & 0,672 & $+$78.391 & \textbf{32,06} & 169/259 \\
+Pipeline Antiga em Produção    & 8,48 & 10,75 & 0,696 & $+$46.274 & 41,02 & 168/260 \\
+Voting (GBR+XGB+RFR)           & 8,13 & 10,78 & 0,675 & $+$135.933 & 33,35 & 180/259 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Quantidade (Tabela~\ref{tab:rank-qtd}).} Aqui a leitura é \emph{mista} e o relatório é
-honesto quanto a isso. O SARIMA tem o \textbf{melhor MAPE médio (7,19\%)}, o \textbf{menor viés
-(22,6)} --- centradíssimo --- e o \textbf{maior número de dias muito bons} (97/211 com erro
-$<5\%$). Porém, no critério de \emph{ranking} (RMSPE) fica em 4\textsuperscript{o} (9,64\% vs.\
-9,49\% do melhor ML) e tem o \textbf{pior erro máximo} (50,71\%): um único dia muito ruim
+honesto quanto a isso. O SARIMA tem o \textbf{menor viés (26,3)} --- centradíssimo ---, MAPE
+praticamente empatado com o melhor ML (7,35\% vs.\ 7,32\%) e 95/211 dias com erro $<5\%$ (vs.\ 96
+do melhor). Porém, no critério de \emph{ranking} (RMSPE) fica atrás dos melhores \emph{stackings}
+(9,78\% vs.\ 9,49\%) e tem o \textbf{pior erro máximo} (50,83\%): um único dia muito ruim
 (justamente o que o RMSPE penaliza). Ou seja, o SARIMA é o \emph{mais bem centrado}, mas não o de
-menor dispersão de cauda na quantidade --- ainda assim supera a pipeline antiga em RMSPE (9,64 vs.\
+menor dispersão de cauda na quantidade --- ainda assim supera a pipeline antiga em RMSPE (9,78 vs.\
 9,88) e em MAPE.
 
 \begin{table}[H]
@@ -708,11 +816,11 @@ menor dispersão de cauda na quantidade --- ainda assim supera a pipeline antiga
 \toprule
 Modelo & MAPE\% & RMSPE\% & $R^2$ & Viés & Máx.\% & $<$5\% \\
 \midrule
-SE(LINE)+SE(SGDR)+ABR          & 7,41 & \textbf{9,49} & 0,345 & 59,6 & 31,26 & 88 \\
+SE(LINE)+SE(SGDR)+ABR          & 7,41 & \textbf{9,49} & \textbf{0,345} & 59,6 & 31,26 & 88 \\
 SPct+ABR                       & 7,47 & 9,59 & 0,336 & 61,0 & 31,26 & 85 \\
-SE(ABR)+MAS+OHE+ABR            & 7,32 & 9,62 & 0,328 & 43,7 & 34,42 & 96 \\
-\textbf{SARIMA}                & \textbf{7,19} & 9,64 & 0,339 & \textbf{22,6} & 50,71 & \textbf{97} \\
-SE(ETR)+MMS+BIN+SE(ELAS)+ABR   & 7,67 & 9,73 & 0,311 & 69,9 & 29,60 & 85 \\
+SE(ABR)+MAS+OHE+ABR            & \textbf{7,32} & 9,62 & 0,328 & 43,7 & 34,42 & \textbf{96} \\
+SE(ETR)+MMS+BIN+SE(ELAS)+ABR   & 7,67 & 9,73 & 0,311 & 69,9 & \textbf{29,60} & 85 \\
+\textbf{SARIMA}                & 7,35 & 9,78 & 0,321 & \textbf{26,3} & 50,83 & 95 \\
 Pipeline Antiga em Produção    & 7,89 & 9,88 & 0,313 & 40,5 & 34,06 & 87 \\
 \bottomrule
 \end{tabular}
@@ -726,8 +834,8 @@ pipeline antiga também erra.
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.9\linewidth]{valor_pred_real.png}
-\caption{Valor previsto (SARIMA) $\times$ realizado $\times$ pipeline antiga ao longo do período de
-avaliação. Os maiores erros concentram-se nos saltos pós-atípicos.}
+\caption{Valor previsto (SARIMAX, variante com a fila D$-$1) $\times$ realizado $\times$ pipeline
+antiga ao longo do período de avaliação. Os maiores erros concentram-se nos saltos pós-atípicos.}
 \label{fig:predreal}
 \end{figure}
 
@@ -800,18 +908,19 @@ amanhã é o nível de hoje, não uma média histórica.
 \item \textbf{O motor é a MA(1)}, não a sazonalidade: $\theta_1\approx-0{,}6$ ($p<0{,}001$) domina;
 o padrão semanal é real mas fraco.
 \item \textbf{Dias de erro têm efeito real e mensurável} --- entram como \emph{intervenção}, não
-como descarte. Muitos afetam o \emph{valor} sem afetar a \emph{quantidade} (8/23 ``não signif.'' na
-qtd), e o efeito tipicamente tem cauda (\emph{backlog}).
+como descarte. O mesmo evento raramente recebe a mesma forma nas duas séries (6/23 ``não signif.''
+na qtd, 5/23 no valor), e na quantidade o efeito tipicamente tem cauda (\emph{backlog}).
 \item \textbf{Valor e quantidade não compartilham equilíbrio de longo prazo} --- a modelagem
 separada é a escolha correta.
 \end{enumerate}
 
 \paragraph{Leitura crítica.} O argumento a favor do modelo branco é \textbf{forte no valor}
-(SARIMA 1\textsuperscript{o} em RMSPE, $R^2$, viés e erro máximo) e \textbf{qualitativamente forte
+(SARIMA 1\textsuperscript{o} em RMSPE, MAPE, $R^2$ e viés) e \textbf{qualitativamente forte
 nas duas séries} (interpretabilidade, diagnóstico de Ljung--Box, especificação congelada). Deve-se
 ser honesto, porém, em dois pontos: (i) na \textbf{quantidade}, o SARIMA \emph{não} é o melhor no
-critério de \emph{ranking} (RMSPE 9,64\%, 4\textsuperscript{o}) e tem o \emph{pior} erro máximo
-(50,71\%) --- é o mais bem centrado (menor viés, melhor MAPE), mas paga em um dia de cauda; (ii) o
+critério de \emph{ranking} (RMSPE 9,78\% vs.\ 9,49\% do melhor \emph{stacking}) e tem o \emph{pior}
+erro máximo
+(50,83\%) --- é o mais bem centrado (menor viés, MAPE de ponta), mas paga em um dia de cauda; (ii) o
 \textbf{ganho de acurácia} sobre a pipeline antiga é, no geral, \emph{marginal}. A tese que se
 sustenta com robustez não é ``prevê muito melhor'', e sim ``\textbf{empata ou supera em acurácia e
 ganha em interpretabilidade, auditabilidade e tratamento explícito de choques}'', com a vantagem
@@ -825,19 +934,21 @@ paramétrico direto.
 
 \begin{itemize}\setlength\itemsep{2pt}
 \item \textbf{Valor} $\to$ SARIMA $(0,1,1)(0,0,1)_5 +$ intervenção: 1\textsuperscript{o} no
-\emph{ranking}, melhor RMSPE (9,36\%), $R^2$ (0,750) e viés quase nulo.
-\item \textbf{Quantidade} $\to$ SARIMA $(0,1,1)(0,0,2)_5 +$ intervenção: melhor MAPE e viés,
-supera a pipeline antiga em RMSPE; univariado e parcimonioso.
+\emph{ranking}, melhor RMSPE (9,56\%), MAPE (7,31\%), $R^2$ (0,753) e viés quase nulo (MPE 0,05\%).
+\item \textbf{Quantidade} $\to$ SARIMA $(0,1,1)(0,0,2)_5 +$ intervenção: menor viés e MAPE
+empatado com o melhor ML (7,35\% vs.\ 7,32\%), supera a pipeline antiga em RMSPE; univariado e
+parcimonioso.
 \end{itemize}
 
 \noindent
 Responde-se afirmativamente à pergunta de pesquisa: um modelo \emph{branco}, com especificação
 única congelada, \textbf{iguala ou supera} a pipeline em produção nas duas séries, sem abrir mão de
 interpretabilidade. A análise de intervenção de Box--Tiao mostrou-se decisiva para descontaminar o
-ajuste (Ljung--Box de $\approx 0{,}01$ para 0,37/0,63) e a ausência de cointegração legitimou a
+ajuste (Ljung--Box de $\approx 0{,}01$ para 0,32/0,99) e a ausência de cointegração legitimou a
 modelagem separada --- confirmada pelo teste de limites \textbf{ARDL} (que também não rejeita a
 ausência de relação de nível) e, empiricamente, pelo \emph{walk-forward}, já que nenhuma alternativa
-conjunta (ticket, ARDL, SUR ou VAR) supera o SARIMA univariado (Tabela~\ref{tab:joint}). Em uma
+conjunta (ticket, ARDL, SUR, VAR) nem especificação univariada mais flexível (Prophet, UCM, TVP)
+supera o SARIMA univariado (Tabela~\ref{tab:joint}). Em uma
 frase: \emph{ambas as séries são bem descritas por uma suavização MA(1) sobre a série diferenciada,
 com sazonalidade semanal leve e os dias atípicos tratados explicitamente por intervenção de
 Box--Tiao}.

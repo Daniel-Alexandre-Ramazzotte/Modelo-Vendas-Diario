@@ -53,8 +53,8 @@
         "delta": null
       },
       "vespera Carnaval (n=2)": {
-        "func": "e",
-        "delta": 0.2
+        "func": "nao signif.",
+        "delta": null
       },
       "Carnaval (2025-03-05)": {
         "func": "gradual",
@@ -113,8 +113,8 @@
         "delta": 0.9
       },
       "RBM (2026-04-02)": {
-        "func": "f",
-        "delta": 0.4
+        "func": "nao signif.",
+        "delta": null
       }
     },
     "eventos_extra": []
@@ -137,8 +137,8 @@
         "delta": 0.1
       },
       "log_erro": {
-        "func": "c",
-        "delta": null
+        "func": "f",
+        "delta": 0.9
       }
     },
     "overrides": {
@@ -159,12 +159,12 @@
         "delta": null
       },
       "BrSCAM (2025-02-06)": {
-        "func": "nao signif.",
-        "delta": null
+        "func": "b",
+        "delta": 0.9
       },
       "CrefazOn (2025-02-26)": {
-        "func": "nao signif.",
-        "delta": null
+        "func": "f",
+        "delta": 0.9
       },
       "dia anterior a vespera de Carnaval (n=2)": {
         "func": "nao signif.",
@@ -187,7 +187,7 @@
         "delta": null
       },
       "CrefazOn (2025-04-22)": {
-        "func": "c",
+        "func": "nao signif.",
         "delta": null
       },
       "Kamunda- Enel (2025-05-22)": {
@@ -223,7 +223,7 @@
         "delta": null
       },
       "Crivo (2025-12-04)": {
-        "func": "nao signif.",
+        "func": "c",
         "delta": null
       },
       "RBM (2026-02-05)": {
