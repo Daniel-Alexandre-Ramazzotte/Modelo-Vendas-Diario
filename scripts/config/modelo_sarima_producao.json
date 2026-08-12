@@ -1,0 +1,240 @@
+{
+  "hist_dias": 540,
+  "log_erro_path": "logs\\Log_Erro.xlsx",
+  "valor": {
+    "order": [
+      0,
+      1,
+      1
+    ],
+    "seasonal_order": [
+      0,
+      0,
+      1,
+      5
+    ],
+    "func_por_tipo": {
+      "vespera": {
+        "func": "e",
+        "delta": 0.1
+      },
+      "log_erro": {
+        "func": "gradual",
+        "delta": null
+      }
+    },
+    "overrides": {
+      "dia anterior a vespera de Natal (n=2)": {
+        "func": "e",
+        "delta": 0.1
+      },
+      "vespera Natal (n=2)": {
+        "func": "abrupto",
+        "delta": null
+      },
+      "dia anterior a vespera de Ano Novo (n=2)": {
+        "func": "e",
+        "delta": 0.1
+      },
+      "vespera Ano Novo (n=2)": {
+        "func": "abrupto",
+        "delta": null
+      },
+      "BrSCAM (2025-02-06)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "CrefazOn (2025-02-26)": {
+        "func": "gradual",
+        "delta": null
+      },
+      "dia anterior a vespera de Carnaval (n=2)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "vespera Carnaval (n=2)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "Carnaval (2025-03-05)": {
+        "func": "gradual",
+        "delta": null
+      },
+      "Bacen - Fila Pagamento (2025-03-07)": {
+        "func": "b",
+        "delta": 0.7
+      },
+      "Enel - Mega (2025-03-24)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "CrefazOn (2025-04-22)": {
+        "func": "gradual",
+        "delta": null
+      },
+      "Kamunda- Enel (2025-05-22)": {
+        "func": "rebote",
+        "delta": null
+      },
+      "Unico - CrefazOn (2025-06-12)": {
+        "func": "gradual",
+        "delta": null
+      },
+      "Code-Mega (2025-06-23)": {
+        "func": "abrupto",
+        "delta": null
+      },
+      "CrefazOn (2025-06-27)": {
+        "func": "b",
+        "delta": 0.9
+      },
+      "CrefazOn- Cobrança (2025-07-03)": {
+        "func": "b",
+        "delta": 0.9
+      },
+      "CrefazOn (2025-10-13)": {
+        "func": "gradual",
+        "delta": null
+      },
+      "E-Consulter (2025-10-24)": {
+        "func": "rebote",
+        "delta": null
+      },
+      "Microsoft (2025-10-29)": {
+        "func": "abrupto",
+        "delta": null
+      },
+      "Crivo (2025-12-04)": {
+        "func": "abrupto",
+        "delta": null
+      },
+      "RBM (2026-02-05)": {
+        "func": "g",
+        "delta": 0.9
+      },
+      "RBM (2026-04-02)": {
+        "func": "nao signif.",
+        "delta": null
+      }
+    },
+    "eventos_extra": []
+  },
+  "qntd": {
+    "order": [
+      0,
+      1,
+      1
+    ],
+    "seasonal_order": [
+      0,
+      0,
+      2,
+      5
+    ],
+    "func_por_tipo": {
+      "vespera": {
+        "func": "e",
+        "delta": 0.1
+      },
+      "log_erro": {
+        "func": "f",
+        "delta": 0.9
+      }
+    },
+    "overrides": {
+      "dia anterior a vespera de Natal (n=2)": {
+        "func": "e",
+        "delta": 0.1
+      },
+      "vespera Natal (n=2)": {
+        "func": "abrupto",
+        "delta": null
+      },
+      "dia anterior a vespera de Ano Novo (n=2)": {
+        "func": "e",
+        "delta": 0.1
+      },
+      "vespera Ano Novo (n=2)": {
+        "func": "abrupto",
+        "delta": null
+      },
+      "BrSCAM (2025-02-06)": {
+        "func": "b",
+        "delta": 0.9
+      },
+      "CrefazOn (2025-02-26)": {
+        "func": "f",
+        "delta": 0.9
+      },
+      "dia anterior a vespera de Carnaval (n=2)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "vespera Carnaval (n=2)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "Carnaval (2025-03-05)": {
+        "func": "f",
+        "delta": 0.9
+      },
+      "Bacen - Fila Pagamento (2025-03-07)": {
+        "func": "f",
+        "delta": 0.9
+      },
+      "Enel - Mega (2025-03-24)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "CrefazOn (2025-04-22)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "Kamunda- Enel (2025-05-22)": {
+        "func": "b",
+        "delta": 0.1
+      },
+      "Unico - CrefazOn (2025-06-12)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "Code-Mega (2025-06-23)": {
+        "func": "c",
+        "delta": null
+      },
+      "CrefazOn (2025-06-27)": {
+        "func": "c",
+        "delta": null
+      },
+      "CrefazOn- Cobrança (2025-07-03)": {
+        "func": "b",
+        "delta": 0.1
+      },
+      "CrefazOn (2025-10-13)": {
+        "func": "nao signif.",
+        "delta": null
+      },
+      "E-Consulter (2025-10-24)": {
+        "func": "g",
+        "delta": 0.1
+      },
+      "Microsoft (2025-10-29)": {
+        "func": "abrupto",
+        "delta": null
+      },
+      "Crivo (2025-12-04)": {
+        "func": "c",
+        "delta": null
+      },
+      "RBM (2026-02-05)": {
+        "func": "b",
+        "delta": 0.8
+      },
+      "RBM (2026-04-02)": {
+        "func": "b",
+        "delta": 0.1
+      }
+    },
+    "eventos_extra": []
+  }
+}

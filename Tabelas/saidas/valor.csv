@@ -1,0 +1,17 @@
+Modelo × Variante,MAPE Médio (%),MAPE Mediana (%),Viés (real-pred),MAE,N,Δ MAPE vs antiga
+"ExtraTrees(EXT,j90) | base",7.02,5.75,208649.8,389169.0,71,-1.29
+"ExtraTrees(EXT,j90) | +mix",7.4,5.85,228060.1,411409.8,71,-0.91
+SE(ETR)+ABR | +seg,7.58,6.52,100581.7,411055.8,71,-0.73
+SE(ETR)+ABR | +seg_pca,7.74,6.84,95480.6,419210.2,71,-0.57
+Voting(GBR+XGB+RFR) | +seg_pca,7.77,6.85,136950.2,423662.8,71,-0.54
+"ExtraTrees(EXT,j90) | bottom-up",7.89,6.92,76155.2,427449.2,71,-0.42
+SE(ETR)+ABR | +mix,8.06,6.63,97939.3,436350.4,71,-0.25
+Voting(GBR+XGB+RFR) | base,8.06,6.86,137353.9,438684.5,71,-0.25
+Voting(GBR+XGB+RFR) | +mix,8.08,6.31,125449.1,438345.4,71,-0.23
+SE(ETR)+ABR | base,8.14,6.22,110231.5,441853.0,71,-0.17
+Voting(GBR+XGB+RFR) | +seg,8.3,6.58,167594.2,453700.4,71,-0.01
+"ExtraTrees(EXT,j90) | +seg_pca",8.36,6.89,330984.9,467261.5,71,0.05
+SE(ETR)+ABR | bottom-up,8.47,7.53,145563.9,462955.2,71,0.16
+Voting(GBR+XGB+RFR) | bottom-up,8.53,7.07,148621.5,465978.3,71,0.22
+"ExtraTrees(EXT,j90) | +seg",9.49,8.22,361812.9,532861.2,71,1.18
+Pipeline Antiga | —,8.31,7.58,43814.2,451848.2,71,0.0

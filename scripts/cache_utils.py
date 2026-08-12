@@ -69,7 +69,7 @@ def _salvar_pkl(caminho, obj):
         pickle.dump(obj, f)
 
 
-def carregar_com_cache(prefix, chave_partes, montar_dados, cache_dir='cache', query_partes=None):
+def carregar_com_cache(prefix, chave_partes, montar_dados, cache_dir='Scripts/cache', query_partes=None):
     """Carrega dados com cache em disco, priorizando dados frescos.
 
     prefix: prefixo do arquivo de cache (ex.: 'query_sarimax').

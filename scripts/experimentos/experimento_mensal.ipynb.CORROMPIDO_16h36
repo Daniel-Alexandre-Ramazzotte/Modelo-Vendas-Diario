@@ -1,0 +1,411 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "d665410d",
+   "metadata": {},
+   "source": [
+    "# 1 - Imports e configuracao"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "52f6a894",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-07-17T20:23:23.162485Z",
+     "iopub.status.busy": "2026-07-17T20:23:23.162130Z",
+     "iopub.status.idle": "2026-07-17T20:23:29.820776Z",
+     "shell.execute_reply": "2026-07-17T20:23:29.820271Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "raiz: m:\\01-Usuario\\Daniel\\Modelo Vendas Diário\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "c:\\Users\\daniel.ramazzotte\\AppData\\Local\\anaconda3\\Lib\\site-packages\\stopit\\__init__.py:10: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.\n",
+      "  import pkg_resources\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Imports OK | TPOT: True\n"
+     ]
+    }
+   ],
+   "source": [
+    "# bootstrap: raiz do projeto (sobe a arvore ate achar CLAUDE.md)\n",
+    "import os, pathlib\n",
+    "_r = pathlib.Path.cwd()\n",
+    "while not (_r / 'CLAUDE.md').exists() and _r != _r.parent:\n",
+    "    _r = _r.parent\n",
+    "os.chdir(_r)\n",
+    "print('raiz:', os.getcwd())\n",
+    "\n",
+    "import warnings, hashlib, pickle, os\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import matplotlib.pyplot as plt\n",
+    "from datetime import datetime, timedelta\n",
+    "\n",
+    "import clickhouse_connect\n",
+    "from workadays import workdays as wd\n",
+    "\n",
+    "from statsmodels.tsa.statespace.sarimax import SARIMAX\n",
+    "import pmdarima as pm\n",
+    "\n",
+    "from sklearn.linear_model import Ridge\n",
+    "from sklearn.ensemble import RandomForestRegressor\n",
+    "from sklearn.preprocessing import StandardScaler\n",
+    "from sklearn.pipeline import make_pipeline\n",
+    "\n",
+    "# TPOT e opcional (import pesado); so carrega se for usar\n",
+    "try:\n",
+    "    from tpot import TPOTRegressor\n",
+    "    _HAS_TPOT = True\n",
+    "except Exception as _e:\n",
+    "    _HAS_TPOT = False\n",
+    "    print('[TPOT indisponivel]', _e)\n",
+    "\n",
+    "warnings.filterwarnings('ignore')\n",
+    "pd.set_option('display.float_format', '{:.2f}'.format)\n",
+    "print('Imports OK | TPOT:', _HAS_TPOT)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "4f39bbaf",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-07-17T20:23:29.822660Z",
+     "iopub.status.busy": "2026-07-17T20:23:29.822482Z",
+     "iopub.status.idle": "2026-07-17T20:23:30.107139Z",
+     "shell.execute_reply": "2026-07-17T20:23:30.106377Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "MIN_TREINO_M=6 | inicio (query) >= 2021-01-01\n"
+     ]
+    }
+   ],
+   "source": [
+    "# ==================== CONFIGURACAO ====================\n",
+    "HOST = '10.101.150.150'; PORT = 8123\n",
+    "USER = 'daniel_ramazzotte';  PASS = 'O9pLTAv*yVz0lGP^#M'\n",
+    "\n",
+    "MIN_TREINO_M = 6           # minimo de meses de historico antes de comecar a avaliar\n",
+    "COBERTURA_MIN = 0.80       # fracao dos dias uteis do mes que precisa ter dados p/ ser \"completo\"\n",
+    "DATA_INICIO_MENSAL = pd.Timestamp('2021-01-01')  # mesma decisao de 2021 da trajetoria (ver 'Por que 2021')\n",
+    "os.makedirs('cache', exist_ok=True)\n",
+    "\n",
+    "# Cobrir desde 2021 e tambem todo o periodo dos backups, caso algum comece antes --\n",
+    "# mais meses = walk-forward mensal com mais folds (relevante p/ SARIMAX sazonal,\n",
+    "# que so ligam com >= 24 meses, e p/ o LSTM da Secao 5, que tem pouco dado p/ treinar).\n",
+    "#\n",
+    "# NOTA: usamos data FIXA (nao \"ultimos N dias\") de proposito -- o cache_utils normaliza\n",
+    "# janelas rolantes tipo \"INTERVAL N DAY\" (substitui o numero por <N> antes de assinar a\n",
+    "# query, ver CLAUDE.md) pra nao invalidar o cache todo dia. Isso significava que aumentar\n",
+    "# HIST_DIAS aqui NAO mudava a assinatura da query, e a celula seguinte ficava presa no\n",
+    "# cache antigo (janela curta, ~2024 em diante). Com data fixa no WHERE, a assinatura muda\n",
+    "# de verdade quando a data muda.\n",
+    "_mins = [DATA_INICIO_MENSAL]\n",
+    "for _bp, _c in [('resultados/backup_valor.xlsx', 'Data previsao'),\n",
+    "                ('resultados/backup_qtd.xlsx',   'Data previsao')]:\n",
+    "    try:\n",
+    "        _b = pd.read_excel(_bp); _d = pd.to_datetime(_b[_c], errors='coerce').dropna()\n",
+    "        if len(_d): _mins.append(_d.min())\n",
+    "    except Exception as _e:\n",
+    "        print('aviso ao ler backup', _bp, '->', _e)\n",
+    "DATA_INICIO_MENSAL_EFETIVA = min(_mins)\n",
+    "print(f'MIN_TREINO_M={MIN_TREINO_M} | inicio (query) >= {DATA_INICIO_MENSAL_EFETIVA.date()}')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "ec47dcff",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-07-17T20:23:30.110038Z",
+     "iopub.status.busy": "2026-07-17T20:23:30.109413Z",
+     "iopub.status.idle": "2026-07-17T20:23:30.219610Z",
+     "shell.execute_reply": "2026-07-17T20:23:30.219126Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[cache query hit] query_mensal <- query_mensal_query_6b54788a6c82.pkl\n",
+      "Propostas: 60568 registros 15min | 2021-01-04 -> 2026-07-19\n"
+     ]
+    }
+   ],
+   "source": [
+    "# ==================== DADOS (cache 1x/dia; fallback p/ cache antigo se o\n",
+    "# ClickHouse estiver inacessivel -- ex.: de casa sem VPN) ====================\n",
+    "import sys\n",
+    "sys.path.insert(0, 'scripts')\n",
+    "from cache_utils import carregar_com_cache\n",
+    "\n",
+    "query = f\"\"\"\n",
+    "SELECT\n",
+    "    toStartOfFifteenMinutes(ultimaalteracao) AS Intervalo,\n",
+    "    SUM(valor) AS valor,\n",
+    "    COUNT(propostaid) AS qntd\n",
+    "FROM crefaz.ft_proposta fp\n",
+    "WHERE\n",
+    "    propostaetapaid = 16\n",
+    "    AND propostadecisaoid IS NULL\n",
+    "    AND toDate(ultimaalteracao) >= toDate('{DATA_INICIO_MENSAL_EFETIVA.date()}')\n",
+    "    AND toDate(ultimaalteracao) < toDate(today())\n",
+    "GROUP BY Intervalo\n",
+    "\"\"\"\n",
+    "\n",
+    "def _consultar_mensal():\n",
+    "    _cli = clickhouse_connect.get_client(host=HOST, port=PORT, username=USER, password=PASS)\n",
+    "    return _cli.query_df(query)\n",
+    "\n",
+    "_PATH_SNAPSHOT_DIARIO = 'resultados/snapshot_query_mensal.xlsx'\n",
+    "try:\n",
+    "    df = carregar_com_cache(\n",
+    "        'query_mensal',\n",
+    "        [pd.Timestamp.today().date(), DATA_INICIO_MENSAL_EFETIVA, query],\n",
+    "        _consultar_mensal,\n",
+    "    )\n",
+    "except RuntimeError as _e:\n",
+    "    if os.path.exists(_PATH_SNAPSHOT_DIARIO):\n",
+    "        print(f'[fallback xlsx] {_e}')\n",
+    "        print(f'-> usando snapshot commitado: {_PATH_SNAPSHOT_DIARIO} (pode estar desatualizado -- '\n",
+    "              f'rode com VPN p/ atualizar o cache)')\n",
+    "        df = pd.read_excel(_PATH_SNAPSHOT_DIARIO)\n",
+    "    else:\n",
+    "        raise\n",
+    "\n",
+    "df['Intervalo'] = df['Intervalo'].astype(str)\n",
+    "df['data'] = pd.to_datetime(pd.to_datetime(df['Intervalo'].str.split('+').str[0]).dt.date)\n",
+    "print(f'Propostas: {len(df)} registros 15min | {df[\"data\"].min().date()} -> {df[\"data\"].max().date()}')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "d4948c7e",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-07-17T20:23:30.221485Z",
+     "iopub.status.busy": "2026-07-17T20:23:30.221308Z",
+     "iopub.status.idle": "2026-07-17T20:23:30.451507Z",
+     "shell.execute_reply": "2026-07-17T20:23:30.450918Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "df_diario (dias uteis): 1391 dias | 2021-01-04 -> 2026-07-17\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Frame diario agregado (1 linha por dia)\n",
+    "_dd = df.groupby('data').agg(qntd=('qntd', 'sum'), valor=('valor', 'sum')).reset_index()\n",
+    "_dd['qntd']  = pd.to_numeric(_dd['qntd'],  errors='coerce').astype(float)\n",
+    "_dd['valor'] = pd.to_numeric(_dd['valor'], errors='coerce').astype(float)\n",
+    "# so dias uteis (seg-sex, sem feriado BR) -- fins de semana/feriados sao ~0 e nao contam mes util\n",
+    "_hol = _dd['data'].apply(lambda x: bool(wd.is_holiday(x.date(), country='BR')))\n",
+    "df_diario = _dd[(_dd['data'].dt.dayofweek < 5) & (~_hol)].sort_values('data').reset_index(drop=True)\n",
+    "print(f'df_diario (dias uteis): {len(df_diario)} dias | '\n",
+    "      f'{df_diario[\"data\"].min().date()} -> {df_diario[\"data\"].max().date()}')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "3e5bac9d",
+   "metadata": {},
+   "source": [
+    "# 2 - Historico Longo Unificado + Exploratoria (canal / produto / cia)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "93035d4e",
+   "metadata": {},
+   "source": [
+    "\n",
+    "Antes de qualquer modelagem, esta secao caracteriza os dados desde **2018** (regime de\n",
+    "crescimento bem diferente do atual -- ver Trajetória Total, mais adiante) em tres dimensoes -- **canal**, **produto**\n",
+    "e **cia** (concessionaria de energia) -- para responder: quem entrou/saiu da base, como o\n",
+    "ticket medio evoluiu, e quais mudancas de nivel na serie tem explicacao conhecida (mudanca de\n",
+    "politica de credito, por exemplo). Essas respostas alimentam diretamente:\n",
+    "- a decisao de quais canais/produtos/cias viram estrato proprio no bottom-up (Walk Forward Mensal - Estratos / Trajetória Estratos) vs. caem\n",
+    "  em \"Outros\";\n",
+    "- o entendimento de por que a serie tem os saltos que tem, antes de qualquer modelo tentar\n",
+    "  explica-los estatisticamente.\n",
+    "\n",
+    "**Cia** aqui significa a concessionaria de energia (`crefaz.dim_convenio`, ex. ENEL SP, COELBA,\n",
+    "CPFL) associada a propostas de produtos da familia Eletrico -- e usada so como camada\n",
+    "exploratoria/diagnostica nesta secao; o `Objetivo.xlsx` (Secao 16) nao tem meta por cia, so por\n",
+    "canal e produto."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "54352db8",
+   "metadata": {},
+   "source": [
+    "## 2.1 - Query unificada e carga do painel (canal x produto x cia, diario, 2018+)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "3110d998",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-07-17T20:23:30.453383Z",
+     "iopub.status.busy": "2026-07-17T20:23:30.453171Z",
+     "iopub.status.idle": "2026-07-17T20:23:30.917861Z",
+     "shell.execute_reply": "2026-07-17T20:23:30.916307Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[cache query hit] query_mensal_painel_2018 <- query_mensal_painel_2018_query_b5ffc7c28898.pkl\n",
+      "df_painel (bruto): 141,830 linhas | 2018-01-02 -> 2026-07-16\n",
+      "valor total: R$ 4,320,444,246 | qntd total: 3,229,396\n",
+      "% nulo por dimensao (antes do fillna):\n",
+      "  canal        0.01%\n",
+      "  produto      0.00%\n",
+      "  tipoproduto  0.00%\n",
+      "  cia          11.36%\n",
+      "  cia_grupo    12.10%\n",
+      "\n",
+      "Distribuicao tipoproduto (qntd):\n"
+     ]
+    },
+    {
+     "data": {
+      "application/vnd.microsoft.datawrangler.viewer.v0+json": {
+       "columns": [
+        {
+         "name": "tipoproduto",
+         "rawType": "string",
+         "type": "string"
+        },
+        {
+         "name": "qntd",
+         "rawType": "float64",
+         "type": "float"
+        }
+       ],
+       "ref": "b030b4a7-9149-41e3-9605-be061e2f68b4",
+       "rows": [
+        [
+         "Elétrico",
+         "2838672.0"
+        ],
+        [
+         "Não elétrico",
+         "390724.0"
+        ]
+       ],
+       "shape": {
+        "columns": 1,
+        "rows": 2
+       }
+      },
+      "text/plain": [
+       "tipoproduto\n",
+       "Elétrico       2838672.00\n",
+       "Não elétrico    390724.00\n",
+       "Name: qntd, dtype: float64"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# ==================== Configuracao do painel longo (canal x produto x cia) ====================\n",
+    "DATA_INICIO_PAINEL       = pd.Timestamp('2018-01-01')\n",
+    "MIN_SHARE_CANAL_MENSAL   = 0.005\n",
+    "MIN_SHARE_PRODUTO_MENSAL = 0.005\n",
+    "MIN_SHARE_CIA_MENSAL     = 0.005\n",
+    "\n",
+    "query_painel = f\"\"\"\n",
+    "SELECT\n",
+    "    toDate(fp.ultimaalteracao) AS data,\n",
+    "    cad.canal                   AS canal,\n",
+    "    dp.produto                  AS produto,\n",
+    "    dp.tipoproduto                AS tipoproduto,\n",
+    "    dc.convenio                   AS cia,\n",
+    "    dc.conveniogrupo               AS cia_grupo,\n",
+    "    SUM(fp.valor)                   AS valor,\n",
+    "    COUNT(fp.propostaid)            AS qntd\n",
+    "FROM crefaz.ft_proposta fp\n",
+    "LEFT JOIN crefaz.ft_contrato fc  ON fc.propostaid = fp.propostaid\n",
+    "LEFT JOIN mis_s3.cadastro cad     ON cad.loginVendedor = fc.loginvendedorrbm\n",
+    "LEFT JOIN crefaz.dim_produto dp   ON dp.id = fp.produtoid\n",
+    "LEFT JOIN crefaz.dim_convenio dc  ON dc.id = fp.convenioid\n",
+    "WHERE fp.propostaetapaid = 16 AND fp.propostadecisaoid IS NULL\n",
+    "  AND toDate(fp.ultimaalteracao) >= toDate('{DATA_INICIO_PAINEL.date()}')\n",
+    "GROUP BY data, canal, produto, tipoproduto, cia, cia_grupo\n",
+    "\"\"\"\n",
+    "# Canal NAO vem de fp.canalid/dim_canal (nao reflete o canal de venda real) -- vem do vendedor.\n",
+    "# Cia = dim_convenio (concessionaria de energia), joined direto por fp.convenioid; NAO confundir\n",
+    "# com gestaodados.ft_cia_p1 (log do motor de politicas, usado so na Secao 2.5 p/ eventos).\n",
+    "\n",
+    "def _consultar_painel():\n",
+    "    _cli = clickhouse_connect.get_client(host=HOST, port=PORT, username=USER, password=PASS)\n",
+    "    return _cli.query_df(query_painel)\n",
+    "\n",
+    "_PATH_SNAPSHOT_PAINEL = 'resultados/snapshot_query_mensal_painel.xlsx'\n",
+    "try:\n",
+    "    df_painel = carregar_com_cache(\n",
+    "        'query_mensal_painel_2018',\n",
+    "        [pd.Timestamp.today().date(), query_painel],\n",
+    "        _consultar_painel,\n",
+    "    )\n",
+    "except RuntimeError as _e:\n",
+    "    if os.path.exists(_PATH_SNAPSHOT_PAINEL):\n",
+    "        print(f'[fallback xlsx] {_e}')\n",
+    "        print(f'-> usando snapshot commitado: {_PATH_SNAPSHOT_PAINEL} (pode estar desatualizado -- '\n",
+    "              f'rode com VPN p/ atualizar o cache)')\n",
+    "        df_painel = pd.read_excel(_PATH_SNAPSHOT_PAINEL)\n",
+    "    else:\n",
+    "        raise\n",
+    "\n",
+    "df_painel['data']  = pd.to_datetime(df_painel['data'])\n",
+    "df_painel['valor'] = df_painel['valor'].astype(float)\n",
+    "df_painel['qntd']  = df_painel['qntd'].astype(float)\n",
+    "\n",
+    "_total_qntd_painel = df_painel['qntd'].sum()\n",
+    "print(f'df_painel (bruto): {len(df_painel):,} linhas | {df_painel[\"data\"].min().date()} -> {df_painel[\"data\"].max().date()}')\n",
+    "print(f'valor total: R$ {df_painel[\"valor\"].sum():,.0f} | qntd total: {_total_qntd_painel:,.0f}')\n",
+    "print('% nulo por dimensao (antes do fillna):')\n",
+    "for _col in ['canal', 'produto', 'tipoproduto', 'cia', 'cia_grupo']:\n",
+    "    _pct = 100 * df_painel.loc[df_painel[_col].isna(), 'qntd'].sum() / _total_qntd_painel\n",
+    "    print(f'  {_col:<12} {_pct:.2f}%')\n",
+    "\n"
