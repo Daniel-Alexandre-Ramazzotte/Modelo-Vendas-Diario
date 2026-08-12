@@ -106,7 +106,7 @@ Cache reindexado sob o prefixo `avaliar_mensal_estrato_completo` (chave inclui
 2. **Canal** — canal sozinho, todos os produtos
 3. **CIA/Produto × Canal** — cruzamento das duas dimensões acima (só no Nowcasting
    Estratos, não entra na Trajetória Estratos por custo)
-4. **CIA (fina)** — mesma composição do recorte 1, mas cia individual em vez de
+4. **CIA (unidade)** — mesma composição do recorte 1, mas cia individual em vez de
    cia-grupo (usado também na Comparação de Metas)
 
 Estratos com histórico curto (abaixo do gate de cobertura) não são descartados: são

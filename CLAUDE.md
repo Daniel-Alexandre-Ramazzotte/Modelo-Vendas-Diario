@@ -186,25 +186,25 @@ candidatos, critérios de escolha ou recortes) — o notebook não reexecuta soz
   Estratos", logo após "Comparação de Modelos - Walk Forward Mensal"): compara os métodos
   de previsão mensal (1 passo) testados na seção "Walk Forward Mensal - Estratos" —
   **agregação** (Total, direto), **estratos por CIA ou Produto** (`CIA/Produto`, `Canal` —
-  um recorte por dimensão) e **estratos cruzados por CIA fina** (`CIA (fina)/Produto x
+  um recorte por dimensão) e **estratos cruzados por CIA unidade** (`CIA (unidade)/Produto x
   Canal`, ex. `ENEL SP`). A variante cruzada por CIA **grupo** (`CIA/Produto x Canal`, ex.
-  `ENEL`) foi **removida** por decisão explícita — só a granularidade fina fica no
+  `ENEL`) foi **removida** por decisão explícita — só a granularidade por unidade fica no
   bottom-up cruzado. Gera:
   - `walkforward_detalhe_estrato.xlsx`: **único arquivo** (a série agregada dos métodos
     e o detalhe por estrato vivem na MESMA tabela, sem `walkforward_totais.xlsx`
     separado) — 1 linha por (target, método, [estrato], período). Linhas de estrato
-    individual trazem `cia_produto`, `canal` e/ou `cia_fina` conforme o método: quando a
-    linha é de **CIA individual** (`cia_fina` preenchida, ex. `ENEL SP`), `cia_produto`
+    individual trazem `cia_produto`, `canal` e/ou `cia_unidade` conforme o método: quando a
+    linha é de **CIA individual** (`cia_unidade` preenchida, ex. `ENEL SP`), `cia_produto`
     vem preenchida TAMBÉM — com o GRUPO daquela cia (ex. `ENEL`, via
-    `_MAPA_GRUPO_CIA_FINA`), pra dar pra filtrar/agrupar no BI pelas duas granularidades
+    `_MAPA_GRUPO_CIA_UNIDADE`), pra dar pra filtrar/agrupar no BI pelas duas granularidades
     na mesma linha; quando é produto não-Elétrico, só `cia_produto` vem preenchida e
-    `cia_fina` fica nula. Linhas de **total agregado por método** (`Agregação (Total)`,
-    `Bottom-up CIA/Produto`, `Bottom-up Canal`, `Bottom-up CIA (fina)/Produto x Canal`)
+    `cia_unidade` fica nula. Linhas de **total agregado por método** (`Agregação (Total)`,
+    `Bottom-up CIA/Produto`, `Bottom-up Canal`, `Bottom-up CIA (unidade)/Produto x Canal`)
     trazem as 3 colunas **nulas** — é assim que o BI
     distingue "total do método" de "quebra por estrato" na mesma tabela. A coluna
     **`objetivo`** (meta cruzada, nome padronizado como `previsto`/`realizado`) prioriza
-    o valor por `cia_fina` (mais específico, direto da planilha) quando a linha tiver
-    `cia_fina` preenchida; senão cai pro valor por `cia_produto` (soma a meta das CIAs
+    o valor por `cia_unidade` (mais específico, direto da planilha) quando a linha tiver
+    `cia_unidade` preenchida; senão cai pro valor por `cia_produto` (soma a meta das CIAs
     finas do grupo, ou produto direto) — só existe nas linhas de estrato cruzado,
     acrescentada numa célula
     própria ("Export BI — objetivo (metas) no detalhe por estrato") na seção "Comparação
